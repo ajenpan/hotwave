@@ -1,0 +1,37 @@
+package tcp
+
+import (
+	"fmt"
+	"sync/atomic"
+	"time"
+)
+
+type Packet interface {
+	//HeaderLen() int32
+	RawData() []byte
+	// IsHeartbeat() bool
+}
+
+type NewCodec func() Codec
+
+type Codec interface {
+	Decode(data []byte) ([]Packet, error)
+	Encode(Packet) ([]byte, error)
+
+	HeartbeatPacket() Packet
+}
+
+type Session interface {
+	ID() string
+
+	UID() int64
+	SetUID(int64)
+
+	Token() string
+	SetToken(string)
+
+	Send(Packet) error
+	Close()
+	RemoteAddr() string
+	LocalAddr() string
+}

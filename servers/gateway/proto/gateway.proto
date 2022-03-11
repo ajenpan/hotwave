@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package gateway;
+
+option go_package = "./servers/gateway/proto;proto";
+
+service Gateway{
+    rpc SendMessageToUse( SendMessageToUserRequest) returns (SendMessageToUserResponse) {}
+}
+
+message SendMessageToUserRequest{
+    uint64 uid = 1;
+    string message = 2;
+}
+
+message SendMessageToUserResponse{
+
+}

@@ -1,0 +1,155 @@
+package gate
+
+import (
+	"fmt"
+
+	pb "google.golang.org/protobuf/proto"
+
+	"gateway/gate/tcp"
+	"gateway/proto"
+)
+
+func NewTCPGate() *TCPGate {
+	return &TCPGate{}
+}
+
+type TCPGate struct {
+	svr *tcp.Server
+}
+
+func RateLimit(f tcp.OnMessageFunc) tcp.OnMessageFunc {
+	return func(s *tcp.Socket, p *tcp.Packet) {
+		//s.ID()
+		f(s, p)
+	}
+}
+
+func AuthLimit(f tcp.OnMessageFunc) tcp.OnMessageFunc {
+	return func(s *tcp.Socket, p *tcp.Packet) {
+		//s.ID()
+		f(s, p)
+	}
+}
+
+func MessageForward(s *tcp.Socket, p *tcp.Packet) {
+	var msg pb.Message = nil
+
+	switch p.PacketType() {
+	case tcp.PacketTypePacket:
+		req := &proto.AsyncMessage{}
+		err := pb.Unmarshal(p.Raw, req)
+		if err != nil {
+			return
+		}
+		msg = req
+	case tcp.PacketTypeRequest:
+		req := &proto.RequestMessage{}
+		err := pb.Unmarshal(p.Raw, req)
+		if err != nil {
+			return
+		}
+
+		// s.Meta.Load("user")
+		// req.Route
+
+	default:
+	}
+
+	if msg == nil {
+		return
+	}
+
+	fmt.Printf("conn id:%v recv msg:%v \n", s.ID(), msg)
+
+}
+
+func (g *TCPGate) Start() {
+	if g.svr != nil {
+		g.svr.Stop()
+		g.svr = nil
+	}
+
+	g.svr = tcp.NewServer(
+		&tcp.ServerOptions{
+			Address:   ":10199",
+			OnMessage: RateLimit(AuthLimit(MessageForward)),
+			OnConnStat: func(s *tcp.Socket, ss tcp.SocketStat) {
+				fmt.Printf("conn id:%v state change:%v \n", s.ID(), int(ss))
+			},
+		},
+	)
+
+	g.svr.Start()
+}
+
+// type tcpMsgHandler struct {
+// 	tcpListener *tcpserver.Server
+// }
+
+// func tcpResponse(s tcpsocket.Session, resp *igwProto.ResponseMessage) {
+
+// 	defer func() {
+// 		if err := recover(); err != nil {
+// 			log.Errorf("tcpResponse:%s", err)
+// 		}
+// 	}()
+
+// 	if resp == nil {
+// 		log.Error("res is nil")
+// 		return
+// 	}
+
+// 	log.Infof("send to:%s,route:%s,msg:%s", s.ID(), resp.Route, resp.String())
+
+// 	//TODO:simple digest, with pubulic key and privete key
+// 	resp.Checksum = base64.StdEncoding.EncodeToString(security.SHA1Digest(resp.Body))
+
+// 	raw, err := proto.Marshal(resp)
+// 	if err != nil {
+// 		log.Error(err)
+// 		return
+// 	}
+// 	p := &packet{
+// 		Typ:    uint8(igwProto.ResponseMessage_FLAGID),
+// 		Raw:    raw,
+// 		Length: len(raw),
+// 	}
+// 	err = s.Send(p)
+// 	if err != nil {
+// 		log.Error(err)
+// 	}
+// }
+
+// // func tcpResponseWithError(s tcpsocket.Session, resp *pb.ResponseMessage, err error) {
+// //	// resp.Respcode = http.StatusInternalServerError
+// //	//resp.Respmsg = err.Error()
+// // 	tcpResponse(s, resp)
+// // }
+
+// // func tcpResponseWithCode(s tcpsocket.Session, resp *pb.ResponseMessage, code int) {
+// // 	//resp.Respcode = int32(code)
+// // 	//resp.Respmsg = http.StatusText(code)
+// // 	tcpResponse(s, resp)
+// // }
+
+// func (t *tcpMsgHandler) Start(address string) error {
+// 	if len(address) == 0 {
+// 		address = ":6666"
+// 	}
+// 	log.Infof("gTcpgate listen on %s", address)
+// 	t.tcpListener = tcpserver.NewServer(
+// 		tcpserver.Address(address),
+// 		tcpserver.OnConnStat(onTCPConnStat),
+// 		tcpserver.OnMessage(onTCPMessage),
+// 		tcpserver.CodecFunc(NewDecoder),
+// 	)
+
+// 	return t.tcpListener.Start()
+// }
+
+// func (t *tcpMsgHandler) Stop() error {
+// 	if t.tcpListener != nil {
+// 		return t.tcpListener.Stop()
+// 	}
+// 	return nil
+// }
