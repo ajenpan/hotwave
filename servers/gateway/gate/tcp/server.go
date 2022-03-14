@@ -117,7 +117,7 @@ func (n *Server) accept(socket *Socket) {
 	defer n.removeSocket(socket)
 
 	if n.opts.Adapter != nil {
-		n.opts.Adapter.OnConnStat(socket, SocketStatConnected)
+		n.opts.Adapter.OnGateConnStat(socket, SocketStatConnected)
 	}
 
 	var socketErr error = nil

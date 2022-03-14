@@ -30,10 +30,10 @@ func main() {
 func realmain() error {
 	var err error
 	gate := handler.NewGater()
+
 	frame.DefaultOptions.Name = Name
 	frame.DefaultOptions.Version = Version
 	frame.DefaultOptions.Adpater = gate
-
 	core, err := frame.NewCore()
 	if err != nil {
 		return err
@@ -59,7 +59,7 @@ func realmain() error {
 	signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
 	s := <-signals
 	logger.Infof("recv signal: %v", s.String())
-
+	core.Stop()
 	tcpListener.Stop()
 	return nil
 }

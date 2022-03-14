@@ -28,10 +28,7 @@ const (
 	SocketStatDisconnected SocketStat = 2
 )
 
-type OnMessageFunc func(*Session, *codec.Message)
-type OnConnStatFunc func(*Session, SocketStat)
-
 type Adapter interface {
-	OnMessage(Session, *codec.Message)
-	OnConnStat(Session, SocketStat)
+	OnGateMessage(Session, *codec.Message)
+	OnGateConnStat(Session, SocketStat)
 }

@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"fmt"
 	"hotwave/frame"
 	frameproto "hotwave/frame/proto"
 	"hotwave/servers/gateway/gate"
@@ -22,19 +23,35 @@ func NewGater() *Gater {
 		sessions: make(map[string]*gate.Session),
 		users:    make(map[int64]*gate.Session),
 	}
-
 	return g
 }
 
-func (g *Gater) OnMessage(session gate.Session, msg *codec.Message) {
+func (g *Gater) SendSessionErrorAndClose(session gate.Session, err error) {
+
+	session.Close()
+}
+
+func (g *Gater) OnGateMessage(session gate.Session, msg *codec.Message) {
+	uid := session.UID()
+
+	inAllowList := true
+	if inAllowList {
+
+	} else {
+		if uid == 0 {
+			g.SendSessionErrorAndClose(session, fmt.Errorf("auth is required"))
+			return
+		}
+	}
+
 	session.Send(msg)
+
 	// router.Route(msg.Route, msg.Type, msg.Head, msg.Body)
 	// session
 	// rawTargetID, has := session.GetMeta(msg.Endpoint)
 	// if !has {
 	// 	session.SetMeta(msg.Endpoint, rawTargetID)
 	// }
-
 	// switch msg.Type {
 	// case codec.Request:
 	// case codec.Event:
@@ -44,7 +61,7 @@ func (g *Gater) OnMessage(session gate.Session, msg *codec.Message) {
 	// }
 }
 
-func (g *Gater) OnConnStat(session gate.Session, status gate.SocketStat) {
+func (g *Gater) OnGateConnStat(session gate.Session, status gate.SocketStat) {
 
 }
 

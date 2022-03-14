@@ -4,15 +4,72 @@ package gateway;
 
 option go_package = "./servers/gateway/proto;proto";
 
-service Gateway{
-    rpc SendMessageToUse( SendMessageToUserRequest) returns (SendMessageToUserResponse) {}
+service Gateway {
+  rpc SendMessageToUse(SendMessageToUserRequest) returns (SendMessageToUserResponse) {}
 }
 
-message SendMessageToUserRequest{
-    uint64 uid = 1;
-    string message = 2;
+service GateAdapter {
+  rpc UserMessage(stream UserMessageWraper) returns (SteamClosed) {}
 }
 
-message SendMessageToUserResponse{
+message UserMessageWraper {
+  string gateway = 1;
+  string name = 2;
+  map<string, string> meta = 3;
+  bytes body = 4;
+  int64 user_id = 5;
+  string sid = 6;
+}
 
+message EventMessageWraper {
+  string topic = 1;
+  bytes body = 2;
+  string create_by = 3;
+  string create_at = 4;
+}
+
+message SteamClosed {
+  string msg = 1;
+}
+
+message SendMessageToUserRequest {
+  uint64 uid = 1;
+  string message = 2;
+}
+
+message SendMessageToUserResponse {}
+
+message CaptchaQuestion {
+  string captch_id = 1;
+  string captch_type = 2;
+  bytes catpch_raw = 3;
+}
+
+message CaptchaAnswer {
+  string captch_id = 1;
+  string captch_type = 2;
+  string answer = 3;
+}
+
+message AccountInfo {
+  string account = 1;
+  string passwd = 2;
+  CaptchaAnswer answer = 3;
+}
+
+message SessionInfo {
+  string account = 1;
+  string session = 2;
+}
+
+message LoginRequest {
+  oneof checker {
+    AccountInfo account_info = 1;
+    SessionInfo session_info = 2;
+  }
+}
+
+message LoginResponse {
+  enum Flag { Success = 0; }
+  Flag flag = 1;
 }

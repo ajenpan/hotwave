@@ -11,7 +11,6 @@ const (
 	Error MessageType = iota
 	Request
 	Response
-	Event
 	Async
 )
 

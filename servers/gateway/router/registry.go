@@ -104,6 +104,9 @@ func (r *registryRouter) isClosed() bool {
 func (r *registryRouter) refresh() {
 	var attempts int
 
+	t := time.NewTicker(10 * time.Minute)
+	defer t.Stop()
+
 	for {
 		services, err := r.opts.Registry.ListServices()
 		if err != nil {
@@ -130,7 +133,7 @@ func (r *registryRouter) refresh() {
 		// refresh list in 10 minutes... cruft
 		// use registry watching
 		select {
-		case <-time.After(time.Minute * 10):
+		case <-t.C:
 		case <-r.exit:
 			return
 		}

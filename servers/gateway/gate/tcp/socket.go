@@ -64,8 +64,6 @@ func ConverPacket(msg *codec.Message) *Packet {
 		packet.Typ = PacketTypeRequest
 	case codec.Response:
 		packet.Typ = PacketTypeResponse
-	case codec.Event:
-		fallthrough
 	case codec.Async:
 		packet.Typ = PacketTypePacket
 	default:
