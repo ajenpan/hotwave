@@ -28,12 +28,13 @@ func NewServer(opts *ServerOptions) *Server {
 }
 
 type Server struct {
-	opts    *ServerOptions
-	mu      sync.RWMutex
-	sockets map[string]*Socket
-	die     chan bool
-	wgLn    sync.WaitGroup
-	wgConns sync.WaitGroup
+	opts     *ServerOptions
+	mu       sync.RWMutex
+	sockets  map[string]*Socket
+	die      chan bool
+	wgLn     sync.WaitGroup
+	wgConns  sync.WaitGroup
+	listener net.Listener
 }
 
 func (s *Server) Stop() error {
@@ -53,40 +54,43 @@ func (s *Server) Start() error {
 	defer s.wgLn.Done()
 
 	s.die = make(chan bool)
-
 	listener, err := net.Listen("tcp", s.opts.Address)
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
-	var tempDelay time.Duration = 0
-	for {
-		select {
-		case <-s.die:
-			return nil
-		default:
-			conn, err := listener.Accept()
-			if err != nil {
-				if ne, ok := err.(net.Error); ok && ne.Temporary() {
-					if tempDelay == 0 {
-						tempDelay = 5 * time.Millisecond
-					} else {
-						tempDelay *= 2
+	s.listener = listener
+	go func() {
+		defer listener.Close()
+		var tempDelay time.Duration = 0
+		for {
+			select {
+			case <-s.die:
+				return
+			default:
+				conn, err := listener.Accept()
+				if err != nil {
+					if ne, ok := err.(net.Error); ok && ne.Temporary() {
+						if tempDelay == 0 {
+							tempDelay = 5 * time.Millisecond
+						} else {
+							tempDelay *= 2
+						}
+						if max := 1 * time.Second; tempDelay > max {
+							tempDelay = max
+						}
+						time.Sleep(tempDelay)
+						continue
 					}
-					if max := 1 * time.Second; tempDelay > max {
-						tempDelay = max
-					}
-					time.Sleep(tempDelay)
-					continue
+					return
 				}
-				return err
-			}
-			tempDelay = 0
+				tempDelay = 0
 
-			socket := NewSocket(conn)
-			go s.accept(socket)
+				socket := NewSocket(conn)
+				go s.accept(socket)
+			}
 		}
-	}
+	}()
+	return nil
 }
 
 func (n *Server) accept(socket *Socket) {
@@ -127,23 +131,22 @@ func (n *Server) accept(socket *Socket) {
 		if socketErr != nil {
 			break
 		}
-
-		// if s.opts.OnMessage != nil {
-		// 	switch p.Typ {
-		// 	case PacketTypePacket:
-		// 		fallthrough
-		// 	case PacketTypeRequest:
-		// 		s.opts.OnMessage(socket, p)
-		// 	case PacketTypeHeartbeat:
-		// 		fallthrough
-		// 	case PacketTypeEcho:
-		// 		if err := socket.Send(p); err != nil {
-		// 			log.Error(err)
-		// 			break
-		// 		}
-		// 	default:
-		// 		break
-		// 	}
+		switch p.Typ {
+		case PacketTypePacket:
+			if n.opts.Adapter != nil {
+				msg := ConverMessage(p)
+				n.opts.Adapter.OnGateMessage(socket, msg)
+			}
+		case PacketTypeHeartbeat:
+			fallthrough
+		case PacketTypeEcho:
+			if err := socket.sendPacket(p); err != nil {
+				log.Error(err)
+				break
+			}
+		default:
+			break
+		}
 		// }
 	}
 }
@@ -156,6 +159,10 @@ func (s *Server) GetSocket(id string) *Socket {
 		return ret
 	}
 	return nil
+}
+
+func (s *Server) Address() string {
+	return s.listener.Addr().String()
 }
 
 func (s *Server) SocketCount() int {

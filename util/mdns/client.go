@@ -34,7 +34,6 @@ type ServiceEntry struct {
 
 // complete is used to check if we have all the info we need
 func (s *ServiceEntry) complete() bool {
-
 	return (len(s.AddrV4) > 0 || len(s.AddrV6) > 0 || len(s.Addr) > 0) && s.Port != 0 && s.hasTXT
 }
 
@@ -137,6 +136,7 @@ func Listen(entries chan<- *ServiceEntry, exit chan struct{}) error {
 				if e.sent {
 					continue
 				}
+				fmt.Println("name:", e.Name, e.TTL)
 				e.sent = true
 				entries <- e
 				ip = make(map[string]*ServiceEntry)

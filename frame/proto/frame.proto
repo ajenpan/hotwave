@@ -5,17 +5,7 @@ package frame;
 option go_package = "./frame/proto;proto";
 
 service NodeBase {
-  rpc UserMessage(stream UserMessageWraper) returns (SteamClosed) {}
   rpc EventMessage(stream EventMessageWraper) returns (SteamClosed) {}
-}
-
-message UserMessageWraper {
-  string gateway = 1;
-  string name = 2;
-  map<string, string> meta = 3;
-  bytes body = 4;
-  int64 user_id = 5;
-  string sid = 6;
 }
 
 message EventMessageWraper {

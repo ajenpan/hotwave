@@ -22,7 +22,6 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type NodeBaseClient interface {
-	UserMessage(ctx context.Context, opts ...grpc.CallOption) (NodeBase_UserMessageClient, error)
 	EventMessage(ctx context.Context, opts ...grpc.CallOption) (NodeBase_EventMessageClient, error)
 }
 
@@ -34,42 +33,8 @@ func NewNodeBaseClient(cc grpc.ClientConnInterface) NodeBaseClient {
 	return &nodeBaseClient{cc}
 }
 
-func (c *nodeBaseClient) UserMessage(ctx context.Context, opts ...grpc.CallOption) (NodeBase_UserMessageClient, error) {
-	stream, err := c.cc.NewStream(ctx, &NodeBase_ServiceDesc.Streams[0], "/frame.NodeBase/UserMessage", opts...)
-	if err != nil {
-		return nil, err
-	}
-	x := &nodeBaseUserMessageClient{stream}
-	return x, nil
-}
-
-type NodeBase_UserMessageClient interface {
-	Send(*UserMessageWraper) error
-	CloseAndRecv() (*SteamClosed, error)
-	grpc.ClientStream
-}
-
-type nodeBaseUserMessageClient struct {
-	grpc.ClientStream
-}
-
-func (x *nodeBaseUserMessageClient) Send(m *UserMessageWraper) error {
-	return x.ClientStream.SendMsg(m)
-}
-
-func (x *nodeBaseUserMessageClient) CloseAndRecv() (*SteamClosed, error) {
-	if err := x.ClientStream.CloseSend(); err != nil {
-		return nil, err
-	}
-	m := new(SteamClosed)
-	if err := x.ClientStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
-}
-
 func (c *nodeBaseClient) EventMessage(ctx context.Context, opts ...grpc.CallOption) (NodeBase_EventMessageClient, error) {
-	stream, err := c.cc.NewStream(ctx, &NodeBase_ServiceDesc.Streams[1], "/frame.NodeBase/EventMessage", opts...)
+	stream, err := c.cc.NewStream(ctx, &NodeBase_ServiceDesc.Streams[0], "/frame.NodeBase/EventMessage", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -106,7 +71,6 @@ func (x *nodeBaseEventMessageClient) CloseAndRecv() (*SteamClosed, error) {
 // All implementations must embed UnimplementedNodeBaseServer
 // for forward compatibility
 type NodeBaseServer interface {
-	UserMessage(NodeBase_UserMessageServer) error
 	EventMessage(NodeBase_EventMessageServer) error
 	mustEmbedUnimplementedNodeBaseServer()
 }
@@ -115,9 +79,6 @@ type NodeBaseServer interface {
 type UnimplementedNodeBaseServer struct {
 }
 
-func (UnimplementedNodeBaseServer) UserMessage(NodeBase_UserMessageServer) error {
-	return status.Errorf(codes.Unimplemented, "method UserMessage not implemented")
-}
 func (UnimplementedNodeBaseServer) EventMessage(NodeBase_EventMessageServer) error {
 	return status.Errorf(codes.Unimplemented, "method EventMessage not implemented")
 }
@@ -132,32 +93,6 @@ type UnsafeNodeBaseServer interface {
 
 func RegisterNodeBaseServer(s grpc.ServiceRegistrar, srv NodeBaseServer) {
 	s.RegisterService(&NodeBase_ServiceDesc, srv)
-}
-
-func _NodeBase_UserMessage_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(NodeBaseServer).UserMessage(&nodeBaseUserMessageServer{stream})
-}
-
-type NodeBase_UserMessageServer interface {
-	SendAndClose(*SteamClosed) error
-	Recv() (*UserMessageWraper, error)
-	grpc.ServerStream
-}
-
-type nodeBaseUserMessageServer struct {
-	grpc.ServerStream
-}
-
-func (x *nodeBaseUserMessageServer) SendAndClose(m *SteamClosed) error {
-	return x.ServerStream.SendMsg(m)
-}
-
-func (x *nodeBaseUserMessageServer) Recv() (*UserMessageWraper, error) {
-	m := new(UserMessageWraper)
-	if err := x.ServerStream.RecvMsg(m); err != nil {
-		return nil, err
-	}
-	return m, nil
 }
 
 func _NodeBase_EventMessage_Handler(srv interface{}, stream grpc.ServerStream) error {
@@ -194,11 +129,6 @@ var NodeBase_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*NodeBaseServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
-		{
-			StreamName:    "UserMessage",
-			Handler:       _NodeBase_UserMessage_Handler,
-			ClientStreams: true,
-		},
 		{
 			StreamName:    "EventMessage",
 			Handler:       _NodeBase_EventMessage_Handler,

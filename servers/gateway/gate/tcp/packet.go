@@ -31,8 +31,6 @@ const (
 	PacketTypeHeartbeat PacketType = iota
 	PacketTypeAck       PacketType = iota
 	PacketTypePacket    PacketType = iota
-	PacketTypeRequest   PacketType = iota
-	PacketTypeResponse  PacketType = iota
 	PacketTypeEcho      PacketType = iota
 	PacketTypeError     PacketType = iota
 	PacketTypeEndAt_    PacketType = iota

@@ -1,20 +1,40 @@
 package transfer
 
 import (
-	"hotwave/frame"
+	"context"
+	"sync"
+
+	"google.golang.org/grpc"
+
 	protocol "hotwave/servers/gateway/proto"
 )
 
 type Adpater interface {
-	OnUserMessage(frame.User, *protocol.UserMessageWraper)
+	OnUserMessage(msg *protocol.UserMessageWraper)
 }
+
+func NewTransfer() *Transfer {
+	ret := &Transfer{
+		exit: make(chan chan error),
+	}
+
+	grpcServer := grpc.NewServer()
+	protocol.RegisterGateAdapterServer(grpcServer, ret)
+	ret.grpcServer = grpcServer
+
+	return ret
+}
+
 type Transfer struct {
-	protocol.UnimplementedGateAdpaterServer
+	protocol.UnimplementedGateAdapterServer
 
-	// Adapter
+	sync.RWMutex
+	grpcServer *grpc.Server
+	exit       chan chan error
+	adapter    Adpater
 }
 
-func (t *Transfer) UserMessage(svr *protocol.UserMessageWraper) error {
-
-	return nil
+func (t *Transfer) UserMessage(ctx context.Context, in *protocol.UserMessageWraper) (*protocol.SteamClosed, error) {
+	t.adapter.OnUserMessage(in)
+	return nil, nil
 }

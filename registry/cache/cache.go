@@ -28,6 +28,12 @@ type Options struct {
 
 type Option func(o *Options)
 
+func WithTTL(t time.Duration) Option {
+	return func(o *Options) {
+		o.TTL = t
+	}
+}
+
 type cache struct {
 	registry.Registry
 	opts Options

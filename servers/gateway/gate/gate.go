@@ -1,11 +1,14 @@
 package gate
 
-import "hotwave/servers/gateway/gate/codec"
+import (
+	"hotwave/servers/gateway/gate/codec"
+)
 
 type Session interface {
 	ID() string
-	UID() int64
-	SetUID(int64)
+	UID() uint64
+	SerialNumber() uint64
+	SetUID(uint64)
 
 	SetMeta(string, interface{})
 	GetMeta(string) (interface{}, bool)

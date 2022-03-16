@@ -14,7 +14,8 @@ import (
 func init() {
 	lvl, err := GetLevel(os.Getenv("HOTWAVE_LOG_LEVEL"))
 	if err != nil {
-		lvl = InfoLevel
+		// lvl = InfoLevel
+		lvl = DebugLevel
 	}
 
 	DefaultLogger = NewLogger(WithLevel(lvl))

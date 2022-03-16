@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"hotwave/frame/proto"
 	"hotwave/registry"
 )
 
@@ -15,7 +14,6 @@ type Options struct {
 	Address  string            //option
 	Metadata map[string]string //option
 	Registry registry.Registry //option
-	Adpater  Adpater           //option
 
 	// The register expiry time
 	RegisterTTL time.Duration
@@ -35,19 +33,27 @@ func newOptions(opts ...Option) Options {
 
 type Option func(*Options)
 
-type Adpater interface {
-	OnUserMessage(User, *proto.UserMessageWraper)
-	OnNodeEvent(string, *proto.EventMessageWraper)
-}
-
 var DefaultOptions = Options{
 	Name:             "unknown.service",
 	Version:          "latest",
 	NodeId:           "",
 	Registry:         registry.DefaultRegistry,
 	Address:          ":0",
-	Adpater:          &NoopAdpater{},
 	RegisterCheck:    func(context.Context) error { return nil },
 	RegisterInterval: time.Second * 30,
 	RegisterTTL:      time.Second * 90,
+}
+
+// Name of the service
+func Name(n string) Option {
+	return func(o *Options) {
+		o.Name = n
+	}
+}
+
+// Version of the service
+func Version(v string) Option {
+	return func(o *Options) {
+		o.Version = v
+	}
 }

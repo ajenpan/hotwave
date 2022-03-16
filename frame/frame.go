@@ -9,20 +9,18 @@ import (
 
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
-	protobuf "google.golang.org/protobuf/proto"
 
 	protocol "hotwave/frame/proto"
+	"hotwave/frame/router"
 	"hotwave/logger"
 	"hotwave/registry"
-	"hotwave/util/addr"
+	utilAddr "hotwave/util/addr"
 	"hotwave/util/backoff"
 )
 
-func NewCore(opts ...Option) (*Core, error) {
-	ret := &Core{
+func NewFrame(opts ...Option) *frame {
+	ret := &frame{
 		exit: make(chan chan error),
-		// wg:          wait(.Context),
-
 	}
 
 	options := newOptions(opts...)
@@ -36,10 +34,11 @@ func NewCore(opts ...Option) (*Core, error) {
 	protocol.RegisterNodeBaseServer(grpcServer, ret)
 	ret.grpcServer = grpcServer
 
-	return ret, nil
+	ret.router = router.NewRouter(router.WithRegistry(options.Registry))
+	return ret
 }
 
-type Core struct {
+type frame struct {
 	protocol.UnimplementedNodeBaseServer
 
 	sync.RWMutex
@@ -47,153 +46,149 @@ type Core struct {
 	started bool
 	// used for first registration
 	registered bool
-	wg         *sync.WaitGroup
 	rsvc       *registry.Service
 	opts       Options
 	grpcServer *grpc.Server
-	exit       chan chan error
+
+	exit   chan chan error
+	router router.Router
 }
 
-func (c *Core) RegisterService(desc *grpc.ServiceDesc, impl interface{}) {
-	c.grpcServer.RegisterService(desc, impl)
+func (f *frame) GetService(name string) *router.Service {
+	return f.router.GetService(name)
 }
 
-func (c *Core) UserMessage(svr protocol.NodeBase_UserMessageServer) error {
-	// um ,err:= svr.Recv()
-
-	return nil
+// export for grpc handler
+func (f *frame) RegisterService(desc *grpc.ServiceDesc, impl interface{}) {
+	f.grpcServer.RegisterService(desc, impl)
 }
 
-func (c *Core) EventMessage(svr protocol.NodeBase_EventMessageServer) error {
-	return nil
+func (f *frame) Stop() error {
+	recvChan := make(chan error)
+	f.exit <- recvChan
+	f.grpcServer.Stop()
+	f.router.Close()
+	return <-recvChan
 }
 
-func (c *Core) Stop() error {
-	c.grpcServer.Stop()
-	return nil
-}
-
-func (c *Core) Start() error {
-	c.RLock()
-	if c.started {
-		c.RUnlock()
+func (f *frame) Start() error {
+	f.RLock()
+	if f.started {
+		f.RUnlock()
 		return nil
 	}
-	c.RUnlock()
+	f.RUnlock()
 
-	config := c.Options()
+	config := f.Options()
 
 	lis, err := net.Listen("tcp", config.Address)
 	if err != nil {
 		return err
 	}
-	go c.grpcServer.Serve(lis)
+
+	//TODO: how to hold the error?
+	go func() {
+		err := f.grpcServer.Serve(lis)
+		if err != nil {
+			logger.Errorf("grpc server error: %s", err)
+		}
+	}()
 
 	//update for real address when the port is random, eg. localhost:0
-	addr := c.opts.Address
-	c.opts.Address = lis.Addr().String()
+	addr := f.opts.Address
+	f.opts.Address = lis.Addr().String()
 	logger.Info(addr)
 
-	if err = c.Register(); err != nil {
+	// register self to the world
+	if err := f.register(); err != nil {
 		return err
 	}
 
-	// signals := make(chan os.Signal, 1)
-	// signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT)
-	// s := <-signals
-	// logger.Infof("recv signal: %v", s.String())
+	go f.keepRegistered()
 
-	c.Lock()
-	c.started = true
-	c.Unlock()
+	if err := f.router.Start(); err != nil {
+		return err
+	}
+
+	f.Lock()
+	f.started = true
+	f.Unlock()
 	return nil
 }
 
-func (c *Core) SendMessageToUser(user User, msg protobuf.Message) error {
-
-	return nil
-}
-
-func (s *Core) Options() Options {
-	s.RLock()
-	opts := s.opts
-	s.RUnlock()
+func (f *frame) Options() Options {
+	f.RLock()
+	opts := f.opts
+	f.RUnlock()
 	return opts
 }
 
-func (s *Core) KeepRegistered() {
-	go func() {
-		config := s.Options()
-		t := new(time.Ticker)
-		// only process if it exists
-		if s.opts.RegisterInterval > time.Duration(0) {
-			// new ticker
-			t = time.NewTicker(s.opts.RegisterInterval)
-		}
-
+func (f *frame) keepRegistered() {
+	config := f.Options()
+	t := new(time.Ticker)
+	// only process if it exists
+	if f.opts.RegisterInterval > time.Duration(0) {
+		// new ticker
+		t = time.NewTicker(f.opts.RegisterInterval)
+	}
+	// return error chan
+	var ch chan error
+	func() {
 		var err error
-	Loop:
+
 		for {
 			select {
 			// register self on interval
 			case <-t.C:
-				s.RLock()
-				registered := s.registered
-				s.RUnlock()
-				rerr := s.opts.RegisterCheck(context.Background())
+				f.RLock()
+				registered := f.registered
+				f.RUnlock()
+				rerr := f.opts.RegisterCheck(context.Background())
 				if rerr != nil && registered {
 					logger.Errorf("Server %s-%s register check error: %s, deregister it", config.Name, config.NodeId, err)
 					// deregister self in case of error
-					if err := s.Deregister(); err != nil {
+					if err := f.deregister(); err != nil {
 						logger.Errorf("Server %s-%s deregister error: %s", config.Name, config.NodeId, err)
 					}
 				} else if rerr != nil && !registered {
 					logger.Errorf("Server %s-%s register check error: %s", config.Name, config.NodeId, err)
 					continue
 				}
-				if err := s.Register(); err != nil {
+				if err := f.register(); err != nil {
 					logger.Errorf("Server %s-%s register error: %s", config.Name, config.NodeId, err)
 				}
 			// wait for exit
-			case ch := <-s.exit:
+			case ch = <-f.exit:
 				t.Stop()
-				ch <- err
-				break Loop
+				return
 			}
-		}
-
-		s.RLock()
-		registered := s.registered
-		s.RUnlock()
-		if registered {
-			// deregister self
-			if err := s.Deregister(); err != nil {
-				if logger.V(logger.ErrorLevel, logger.DefaultLogger) {
-					logger.Errorf("Server %s-%s deregister error: %s", config.Name, config.NodeId, err)
-				}
-			}
-		}
-
-		s.Lock()
-		swg := s.wg
-		s.Unlock()
-
-		// wait for requests to finish
-		if swg != nil {
-			swg.Wait()
 		}
 	}()
+
+	f.RLock()
+	registered := f.registered
+	f.RUnlock()
+	if registered {
+		// deregister self
+		err := f.deregister()
+		if err != nil {
+			logger.Errorf("Server %s-%s deregister error: %s", config.Name, config.NodeId, err)
+			ch <- err
+			return
+		}
+	}
+	ch <- nil
 }
 
-func (s *Core) Register() error {
-	s.RLock()
-	rsvc := s.rsvc
-	s.RUnlock()
-	config := s.Options()
+func (f *frame) register() error {
+	f.RLock()
+	rsvc := f.rsvc
+	f.RUnlock()
+	config := f.Options()
 
 	regFunc := func(service *registry.Service) error {
 		// create registry options
-		rOpts := []registry.RegisterOption{registry.RegisterTTL(10 * time.Second)}
+		rOpts := []registry.RegisterOption{registry.RegisterTTL(config.RegisterTTL)}
 
 		var regErr error
 
@@ -223,18 +218,13 @@ func (s *Core) Register() error {
 	}
 
 	var err error
-	var advt, host string
+	var advt, host, port string
 	var cacheService bool
 
-	// check the advertise address first
-	// if it exists then use it, otherwise
-	// use the address
-
 	advt = config.Address
-
 	if cnt := strings.Count(advt, ":"); cnt >= 1 {
 		// ipv6 address in format [host]:port or ipv4 host:port
-		host, _, err = net.SplitHostPort(advt)
+		host, port, err = net.SplitHostPort(advt)
 		if err != nil {
 			return err
 		}
@@ -246,7 +236,7 @@ func (s *Core) Register() error {
 		cacheService = true
 	}
 
-	addr, err := addr.Extract(host)
+	addr, err := utilAddr.Extract(host)
 	if err != nil {
 		return err
 	}
@@ -261,6 +251,10 @@ func (s *Core) Register() error {
 	}
 	md := mapCopy(config.Metadata)
 
+	if port != "" {
+		addr = utilAddr.HostPort(addr, port)
+	}
+
 	// register service
 	node := &registry.Node{
 		Id:       config.Name + "-" + config.NodeId,
@@ -268,10 +262,11 @@ func (s *Core) Register() error {
 		Metadata: md,
 	}
 
+	node.Metadata["server"] = "mucp"
 	node.Metadata["registry"] = config.Registry.String()
 	node.Metadata["protocol"] = "mucp"
 
-	s.RLock()
+	f.RLock()
 
 	service := &registry.Service{
 		Name:    config.Name,
@@ -280,9 +275,9 @@ func (s *Core) Register() error {
 	}
 
 	// get registered value
-	registered := s.registered
+	registered := f.registered
 
-	s.RUnlock()
+	f.RUnlock()
 
 	if !registered {
 		if logger.V(logger.InfoLevel, logger.DefaultLogger) {
@@ -300,22 +295,22 @@ func (s *Core) Register() error {
 		return nil
 	}
 
-	s.Lock()
-	defer s.Unlock()
+	f.Lock()
+	defer f.Unlock()
 
 	if cacheService {
-		s.rsvc = service
+		f.rsvc = service
 	}
-	s.registered = true
+	f.registered = true
 
 	return nil
 }
 
-func (s *Core) Deregister() error {
+func (f *frame) deregister() error {
 	var err error
 	var advt, host string
 
-	config := s.Options()
+	config := f.Options()
 
 	// check the advertise address first
 	// if it exists then use it, otherwise
@@ -333,7 +328,7 @@ func (s *Core) Deregister() error {
 		host = advt
 	}
 
-	addr, err := addr.Extract(host)
+	addr, err := utilAddr.Extract(host)
 	if err != nil {
 		return err
 	}
@@ -349,24 +344,22 @@ func (s *Core) Deregister() error {
 		Nodes:   []*registry.Node{node},
 	}
 
-	if logger.V(logger.InfoLevel, logger.DefaultLogger) {
-		logger.Infof("Registry [%s] Deregistering node: %s", config.Registry.String(), node.Id)
-	}
+	logger.Infof("Registry [%s] Deregistering node: %s", config.Registry.String(), node.Id)
 
 	if err := config.Registry.Deregister(service); err != nil {
 		return err
 	}
 
-	s.Lock()
-	s.rsvc = nil
+	f.Lock()
+	f.rsvc = nil
 
-	if !s.registered {
-		s.Unlock()
+	if !f.registered {
+		f.Unlock()
 		return nil
 	}
 
-	s.registered = false
+	f.registered = false
 
-	s.Unlock()
+	f.Unlock()
 	return nil
 }

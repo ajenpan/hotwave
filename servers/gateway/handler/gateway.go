@@ -3,8 +3,11 @@ package handler
 import (
 	"context"
 	"fmt"
-	"hotwave/frame"
-	frameproto "hotwave/frame/proto"
+	"sync"
+
+	"google.golang.org/grpc"
+
+	"hotwave/registry"
 	"hotwave/servers/gateway/gate"
 	"hotwave/servers/gateway/gate/codec"
 	"hotwave/servers/gateway/proto"
@@ -13,16 +16,13 @@ import (
 type Gater struct {
 	proto.UnimplementedGatewayServer
 
-	sessions map[string]*gate.Session
-	users    map[int64]*gate.Session
+	// sessions sync.Map //map[string]*gate.Session
+	user2session sync.Map //map[uint64]*gate.Session
 	// router   router.Router
 }
 
 func NewGater() *Gater {
-	g := &Gater{
-		sessions: make(map[string]*gate.Session),
-		users:    make(map[int64]*gate.Session),
-	}
+	g := &Gater{}
 	return g
 }
 
@@ -44,7 +44,40 @@ func (g *Gater) OnGateMessage(session gate.Session, msg *codec.Message) {
 		}
 	}
 
-	session.Send(msg)
+	converMsg := &proto.UserMessageWraper{
+		Name:         msg.Name,
+		Meta:         msg.Meta,
+		Body:         msg.Body,
+		UserId:       session.UID(),
+		SerialNumber: fmt.Sprintf("%s-%d", session.ID(), session.SerialNumber()),
+	}
+
+	if msg.Name == "gateway" {
+		g.OnUserMessage(converMsg)
+	} else {
+		var target *registry.Node = nil
+		if len(msg.Nodeid) == 0 {
+
+		} else {
+			// target = frame.GetNode(msg.Nodeid)
+		}
+
+		// store
+		var client proto.GateAdapterClient
+		if target == nil {
+			conn, err := grpc.Dial(target.Address)
+			if err != nil {
+				return
+			}
+
+			client = proto.NewGateAdapterClient(conn)
+
+		}
+		client.UserMessage(context.Background(), converMsg)
+	}
+
+	//TODO:
+	// session.Send(msg)
 
 	// router.Route(msg.Route, msg.Type, msg.Head, msg.Body)
 	// session
@@ -65,15 +98,32 @@ func (g *Gater) OnGateConnStat(session gate.Session, status gate.SocketStat) {
 
 }
 
-func (g *Gater) OnUserMessage(user frame.User, msg *frameproto.UserMessageWraper) {
-
-}
-
-func (g *Gater) OnNodeEvent(nodeid string, msg *frameproto.EventMessageWraper) {
-
+func (g *Gater) OnUserMessage(msg *proto.UserMessageWraper) {
+	// var err error
+	if msg.Name == "gateway" {
+		fmt.Println(msg.Body)
+	}
 }
 
 func (g *Gater) SendMessageToUse(ctx context.Context, in *proto.SendMessageToUserRequest) (*proto.SendMessageToUserResponse, error) {
 	out := &proto.SendMessageToUserResponse{}
-	return out, nil
+	v, has := g.user2session.Load(in.Uid)
+	if !has {
+		return out, nil
+	}
+	session, ok := v.(gate.Session)
+	if !ok {
+		return nil, fmt.Errorf("invalid session")
+	}
+
+	msg := &codec.Message{}
+	err := session.Send(msg)
+
+	return out, err
+}
+
+func (g *Gater) OnLogin(session gate.Session, in *proto.LoginRequest) error {
+
+	//session.Send(&proto.LoginResponse{})
+	return nil
 }

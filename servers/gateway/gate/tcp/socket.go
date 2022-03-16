@@ -9,6 +9,8 @@ import (
 	"time"
 
 	"hotwave/servers/gateway/gate/codec"
+
+	"google.golang.org/protobuf/proto"
 )
 
 type OnMessageFunc func(*Socket, *Packet)
@@ -49,8 +51,9 @@ type Socket struct {
 	id     string
 	chSend chan *Packet // push message queue
 
-	timeOut time.Duration
-	Meta    sync.Map
+	timeOut      time.Duration
+	Meta         sync.Map
+	serialNumber uint64
 }
 
 func (s *Socket) ID() string {
@@ -58,39 +61,52 @@ func (s *Socket) ID() string {
 }
 
 func ConverPacket(msg *codec.Message) *Packet {
-	packet := &Packet{}
-	switch msg.Type {
-	case codec.Request:
-		packet.Typ = PacketTypeRequest
-	case codec.Response:
-		packet.Typ = PacketTypeResponse
-	case codec.Async:
-		packet.Typ = PacketTypePacket
-	default:
+	raw, err := proto.Marshal(msg)
+	if err != nil {
+		return nil
 	}
-	packet.Raw = msg.Body
-	packet.PacketHead.RawLen = int32(len(msg.Body))
+
+	packet := &Packet{
+		Raw: raw,
+		PacketHead: PacketHead{
+			Typ:    PacketTypePacket,
+			RawLen: int32(len(raw)),
+		},
+	}
 	return packet
 }
+
 func ConverMessage(p *Packet) *codec.Message {
 	msg := &codec.Message{}
 
-	switch p.Typ {
-	case PacketTypeRequest:
-	case PacketTypeResponse:
-	case PacketTypePacket:
-	}
 	msg.Body = p.Raw
 	return msg
 }
 
-func (a *Socket) Send(p *codec.Message) error {
+func (a *Socket) Send(msg *codec.Message) error {
+	return a.sendPacket(ConverPacket(msg))
+}
+
+func (a *Socket) sendPacket(p *Packet) error {
 	if atomic.LoadInt32(&a.state) == SocketStatDisconnected {
 		return fmt.Errorf("send packet failed, the socket is disconnected")
 	}
-	a.chSend <- ConverPacket(p)
+	a.chSend <- p
 	return nil
 }
+
+// func (a *Socket) Send(msg proto.Message) error {
+
+// 	raw, err := proto.Marshal(msg)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	warp := &codec.Message{
+// 		Name: string(proto.MessageName(msg)),
+// 		Body: raw,
+// 	}
+// 	return a.sendMessage(warp)
+// }
 
 func (a *Socket) Recv() (*Packet, error) {
 	if atomic.LoadInt32(&a.state) == SocketStatDisconnected {
@@ -140,15 +156,19 @@ func (a *Socket) writeWork() {
 	}
 }
 
-func (a *Socket) UID() int64 {
+func (a *Socket) SerialNumber() uint64 {
+	return atomic.AddUint64(&a.serialNumber, 1)
+}
+
+func (a *Socket) UID() uint64 {
 	v, has := a.Meta.Load("UID")
 	if !has {
 		return 0
 	}
-	return v.(int64)
+	return v.(uint64)
 }
 
-func (a *Socket) SetUID(uid int64) {
+func (a *Socket) SetUID(uid uint64) {
 	a.Meta.Store("UID", uid)
 }
 

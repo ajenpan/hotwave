@@ -4,7 +4,7 @@ import (
 	"hotwave/registry"
 )
 
-type Router struct{}
+var DefaultRoute = NewRouter()
 
 type Options struct {
 	Handler  string
@@ -25,4 +25,22 @@ func NewOptions(opts ...Option) Options {
 	}
 
 	return options
+}
+func WithRegistry(r registry.Registry) Option {
+	return func(o *Options) {
+		o.Registry = r
+	}
+}
+
+// func WithResolver(r resolver.Resolver) Option {
+// 	return func(o *Options) {
+// 		o.Resolver = r
+// 	}
+// }
+
+type Router interface {
+	Start() error
+	Close() error
+	GetService(name string) *Service
+	GetNode(id string) *Node
 }
