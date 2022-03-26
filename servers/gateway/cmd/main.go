@@ -5,7 +5,9 @@ import (
 	"os"
 	"time"
 
-	"hotwave/frame"
+	"github.com/urfave/cli/v2"
+
+	frame "hotwave"
 	"hotwave/logger"
 	"hotwave/servers/gateway/gate/tcp"
 	"hotwave/servers/gateway/handler"
@@ -28,50 +30,44 @@ func main() {
 }
 
 func RealMain() error {
-	core := frame.NewFrame(
-		frame.Name(Name),
-		frame.Version(Version),
-	)
-
-	gate := handler.NewGater()
-	proto.RegisterGatewayServer(core, gate)
-
-	if err := core.Start(); err != nil {
-		return err
+	cli.VersionPrinter = func(c *cli.Context) {
+		fmt.Println("project:", Name)
+		fmt.Println("version:", Version)
+		fmt.Println("git commit:", GitCommit)
+		fmt.Println("build at:", BuildAt)
+		fmt.Println("build by:", BuildBy)
 	}
+	app := cli.NewApp()
+	app.Action = func(c *cli.Context) error {
+		core := frame.New(
+			frame.Name(Name),
+			frame.Version(Version),
+		)
 
-	tcpListener := tcp.NewServer(&tcp.ServerOptions{
-		Adapter:          gate,
-		HeatbeatInterval: time.Second * 10,
-		Address:          ":0",
-	})
-	if err := tcpListener.Start(); err != nil {
-		return err
-	}
-	fmt.Println("tcp gate listen on", tcpListener.Address())
-	tk := time.NewTicker(time.Second * 20)
+		gate := handler.NewGater(core)
+		proto.RegisterGatewayServer(core, gate)
 
-	go func() {
-		defer tk.Stop()
-		for v := range tk.C {
-			logger.Infof("tick: %v", v)
-			svrs := core.GetService("gateway")
-			if svrs == nil {
-				continue
-			}
-			if len(svrs.Nodes) == 0 {
-				continue
-			}
-			for _, node := range svrs.Nodes {
-				fmt.Println(node.Id)
-			}
+		if err := core.Start(); err != nil {
+			return err
 		}
-	}()
-	// time.Sleep(time.Second * 10)
-	s := utilSignal.WaitShutdown()
-	logger.Infof("recv signal: %v", s.String())
-	tk.Stop()
-	core.Stop()
-	tcpListener.Stop()
-	return nil
+		defer core.Stop()
+
+		tcpListener := tcp.NewServer(&tcp.ServerOptions{
+			Adapter:          gate,
+			HeatbeatInterval: time.Second * 20,
+			Address:          ":10086",
+		})
+		if err := tcpListener.Start(); err != nil {
+			return err
+		}
+		fmt.Println("tcp gate listen on", tcpListener.Address())
+		defer tcpListener.Stop()
+
+		s := utilSignal.WaitShutdown()
+		logger.Infof("recv signal: %v", s.String())
+		return nil
+	}
+
+	err := app.Run(os.Args)
+	return err
 }

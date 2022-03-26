@@ -15,7 +15,7 @@ type ServerOptions struct {
 	Address string
 	// The interval on which to register
 	HeatbeatInterval time.Duration
-	Adapter          gate.Adapter
+	Adapter          gate.AsyncAdapter
 }
 
 func NewServer(opts *ServerOptions) *Server {
@@ -38,7 +38,6 @@ type Server struct {
 }
 
 func (s *Server) Stop() error {
-
 	s.wgLn.Wait()
 	select {
 	case <-s.die:
@@ -106,12 +105,17 @@ func (n *Server) accept(socket *Socket) {
 	//read ack
 	p := &Packet{}
 	if err := socket.readPacket(p); err != nil {
-		log.Error(err)
+		log.Debugf("read ack error: %s", err)
+		return
+	}
+
+	if p.Typ != PacketTypeAck {
+		log.Debugf("ack type not right: %d", p.Typ)
 		return
 	}
 
 	if err := socket.writePacket(p); err != nil {
-		log.Error(err)
+		log.Debugf("write ack error: %s", err)
 		return
 	}
 
@@ -122,32 +126,52 @@ func (n *Server) accept(socket *Socket) {
 
 	if n.opts.Adapter != nil {
 		n.opts.Adapter.OnGateConnStat(socket, SocketStatConnected)
+		defer n.opts.Adapter.OnGateConnStat(socket, SocketStatDisconnected)
 	}
 
 	var socketErr error = nil
+
 	for {
 		p.Reset()
 		socketErr = socket.readPacket(p)
 		if socketErr != nil {
+			if operror, ok := socketErr.(*net.OpError); ok {
+				log.Debug(operror.Error())
+			}
 			break
 		}
+		brk := false
 		switch p.Typ {
 		case PacketTypePacket:
 			if n.opts.Adapter != nil {
-				msg := ConverMessage(p)
-				n.opts.Adapter.OnGateMessage(socket, msg)
+				msg, err := ConverMessage(p)
+				if err != nil {
+					log.Error(err)
+					continue
+				}
+				func() {
+					defer func() {
+						if err := recover(); err != nil {
+							log.Error(err)
+						}
+					}()
+					n.opts.Adapter.OnGateMessage(socket, msg)
+				}()
 			}
 		case PacketTypeHeartbeat:
 			fallthrough
 		case PacketTypeEcho:
 			if err := socket.sendPacket(p); err != nil {
 				log.Error(err)
-				break
+				brk = true
 			}
 		default:
+			brk = true
+		}
+
+		if brk {
 			break
 		}
-		// }
 	}
 }
 

@@ -10,9 +10,9 @@ import (
 type ClientOption func(*ClientOptions)
 
 type ClientOptions struct {
-	Address    string
-	OnMessage  func(s *Client, p *Packet)
-	OnConnStat func(s *Client, state SocketStat)
+	RemoteAddress string
+	OnMessage     func(s *Client, p *Packet)
+	OnConnStat    func(s *Client, state SocketStat)
 }
 
 // Address to bind to - host:port
@@ -35,8 +35,8 @@ type ClientOptions struct {
 // }
 
 var DefaultClientOptions = ClientOptions{
-	Address:   "",
-	OnMessage: func(s *Client, p *Packet) {},
+	RemoteAddress: "",
+	OnMessage:     func(s *Client, p *Packet) {},
 	OnConnStat: func(s *Client, state SocketStat) {
 	},
 }
@@ -66,27 +66,28 @@ func (c *Client) Connect() error {
 		c.Socket.Close()
 	}
 
-	conn, err := net.DialTimeout("tcp", c.opt.Address, 10*time.Second)
+	conn, err := net.DialTimeout("tcp", c.opt.RemoteAddress, 10*time.Second)
 	if err != nil {
 		return err
 	}
 	socket := NewSocket(conn)
 	c.Socket = socket
 
+	// go func() {
+	//send ack
+	err = socket.writePacket(NewAckPacket())
+	if err != nil {
+		return err
+	}
+	p := &Packet{}
+
+	//read ack
+	err = socket.readPacket(p)
+	if err != nil {
+		return err
+	}
+
 	go func() {
-		//send ack
-		err := socket.writePacket(NewAckPacket())
-		if err != nil {
-			return
-		}
-		p := &Packet{}
-
-		//read ack
-		err = socket.readPacket(p)
-		if err != nil {
-			return
-		}
-
 		defer socket.Close()
 		go socket.writeWork()
 

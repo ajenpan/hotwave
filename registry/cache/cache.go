@@ -1,474 +1,312 @@
-// Package cache provides a registry cache
 package cache
 
 import (
-	"math"
 	"math/rand"
 	"sync"
 	"time"
 
-	"golang.org/x/sync/singleflight"
-
-	"hotwave/logger"
+	log "hotwave/logger"
+	"hotwave/metadata"
 	"hotwave/registry"
 )
 
-// Cache is the registry cache interface
 type Cache interface {
-	// embed the registry interface
-	registry.Registry
-	// stop the cache watcher
-	Stop()
+	Stop() error
+	GetNode(id string) *Node
+	GetService(string, ...registry.GetOption) ([]*registry.Service, error)
 }
 
-type Options struct {
-	// TTL is the cache TTL
-	TTL time.Duration
+type Service struct {
+	sync.RWMutex
+	Name     string
+	Version  string
+	Metadata metadata.Metadata
+	Nodes    map[string]*Node
 }
 
-type Option func(o *Options)
+type Node struct {
+	sync.RWMutex
+	Id          string
+	Address     string
+	ServiceName string
+	Metadata    metadata.Metadata
+}
 
-func WithTTL(t time.Duration) Option {
-	return func(o *Options) {
-		o.TTL = t
+func (s *Service) GetNode(id string) *Node {
+	s.RLock()
+	defer s.RUnlock()
+	if node, has := s.Nodes[id]; has {
+		return node
 	}
+	return nil
 }
 
-type cache struct {
+func (s *Service) NodeSize() int {
+	s.RLock()
+	defer s.RUnlock()
+	return len(s.Nodes)
+}
+
+// router is the default router
+type registryRouter struct {
 	registry.Registry
+
+	exit chan bool
 	opts Options
 
-	// registry cache
-	sync.RWMutex
-	cache   map[string][]*registry.Service
-	ttls    map[string]time.Time
-	watched map[string]bool
+	nodes sync.Map // map of nodes
 
-	// used to stop the cache
-	exit chan bool
-
-	// indicate whether its running
-	running bool
-	// status of the registry
-	// used to hold onto the cache
-	// in failure state
-	status error
-	// used to prevent cache breakdwon
-	sg singleflight.Group
+	serviceslock sync.RWMutex
+	services     map[string]map[string]*Service //name-version-service
 }
 
-var (
-	DefaultTTL = time.Minute
-)
-
-func backoff(attempts int) time.Duration {
-	if attempts == 0 {
-		return time.Duration(0)
-	}
-	return time.Duration(math.Pow(10, float64(attempts))) * time.Millisecond
-}
-
-func (c *cache) getStatus() error {
-	c.RLock()
-	defer c.RUnlock()
-	return c.status
-}
-
-func (c *cache) setStatus(err error) {
-	c.Lock()
-	c.status = err
-	c.Unlock()
-}
-
-// isValid checks if the service is valid
-func (c *cache) isValid(services []*registry.Service, ttl time.Time) bool {
-	// no services exist
-	if len(services) == 0 {
-		return false
-	}
-
-	// ttl is invalid
-	if ttl.IsZero() {
-		return false
-	}
-
-	// time since ttl is longer than timeout
-	if time.Since(ttl) > 0 {
-		return false
-	}
-
-	// ok
-	return true
-}
-
-func (c *cache) quit() bool {
+func (r *registryRouter) isClosed() bool {
 	select {
-	case <-c.exit:
+	case <-r.exit:
 		return true
 	default:
 		return false
 	}
 }
 
-func (c *cache) del(service string) {
-	// don't blow away cache in error state
-	if err := c.status; err != nil {
-		return
-	}
-	// otherwise delete entries
-	delete(c.cache, service)
-	delete(c.ttls, service)
-}
+// refresh list of api services
+func (r *registryRouter) refresh() {
+	var attempts int
 
-func (c *cache) get(service string) ([]*registry.Service, error) {
-	// read lock
-	c.RLock()
+	t := time.NewTicker(10 * time.Minute)
+	defer t.Stop()
 
-	// check the cache first
-	services := c.cache[service]
-	// get cache ttl
-	ttl := c.ttls[service]
-	// make a copy
-	cp := registry.Copy(services)
-
-	// got services && within ttl so return cache
-	if c.isValid(cp, ttl) {
-		c.RUnlock()
-		// return services
-		return cp, nil
-	}
-
-	// get does the actual request for a service and cache it
-	get := func(service string, cached []*registry.Service) ([]*registry.Service, error) {
-		// ask the registry
-		val, err, _ := c.sg.Do(service, func() (interface{}, error) {
-			return c.Registry.GetService(service)
-		})
-		services, _ := val.([]*registry.Service)
+	for {
+		services, err := r.ListServices()
 		if err != nil {
-			// check the cache
-			if len(cached) > 0 {
-				// set the error status
-				c.setStatus(err)
-
-				// return the stale cache
-				return cached, nil
-			}
-			// otherwise return error
-			return nil, err
+			attempts++
+			log.Errorf("unable to list services: %v", err)
+			time.Sleep(time.Duration(attempts) * time.Second)
+			continue
 		}
 
-		// reset the status
-		if err := c.getStatus(); err != nil {
-			c.setStatus(nil)
+		attempts = 0
+
+		for _, s := range services {
+			r.store(s)
 		}
 
-		// cache results
-		c.Lock()
-		c.set(service, registry.Copy(services))
-		c.Unlock()
-
-		return services, nil
+		// refresh list in 10 minutes... cruft
+		// use registry watching
+		select {
+		case <-t.C:
+		case <-r.exit:
+			return
+		}
 	}
-
-	// watch service if not watched
-	_, ok := c.watched[service]
-
-	// unlock the read lock
-	c.RUnlock()
-
-	// check if its being watched
-	if !ok {
-		c.Lock()
-
-		// set to watched
-		c.watched[service] = true
-
-		// only kick it off if not running
-		if !c.running {
-			go c.run(service)
-		}
-
-		c.Unlock()
-	}
-
-	// get and return services
-	return get(service, cp)
 }
 
-func (c *cache) set(service string, services []*registry.Service) {
-	c.cache[service] = services
-	c.ttls[service] = time.Now().Add(c.opts.TTL)
-}
-
-func (c *cache) update(res *registry.Result) {
+// process watch event
+func (r *registryRouter) process(res *registry.Result) {
 	if res == nil || res.Service == nil {
 		return
 	}
 
-	c.Lock()
-	defer c.Unlock()
-
-	// only save watched services
-	if _, ok := c.watched[res.Service.Name]; !ok {
-		return
-	}
-
-	services, ok := c.cache[res.Service.Name]
-	if !ok {
-		// we're not going to cache anything
-		// unless there was already a lookup
-		return
-	}
-
-	if len(res.Service.Nodes) == 0 {
-		switch res.Action {
-		case "delete":
-			c.del(res.Service.Name)
-		}
-		return
-	}
-
-	// existing service found
-	var service *registry.Service
-	var index int
-	for i, s := range services {
-		if s.Version == res.Service.Version {
-			service = s
-			index = i
-		}
-	}
-
 	switch res.Action {
-	case "create", "update":
-		if service == nil {
-			c.set(res.Service.Name, append(services, res.Service))
-			return
+	case registry.Delete.String():
+		{
+			r.remove(res.Service)
 		}
-
-		// append old nodes to new service
-		for _, cur := range service.Nodes {
-			var seen bool
-			for _, node := range res.Service.Nodes {
-				if cur.Id == node.Id {
-					seen = true
-					break
-				}
-			}
-			if !seen {
-				res.Service.Nodes = append(res.Service.Nodes, cur)
-			}
+	case registry.Update.String():
+		fallthrough
+	case registry.Create.String():
+		{
+			r.store(res.Service)
 		}
-
-		services[index] = res.Service
-		c.set(res.Service.Name, services)
-	case "delete":
-		if service == nil {
-			return
-		}
-
-		var nodes []*registry.Node
-
-		// filter cur nodes to remove the dead one
-		for _, cur := range service.Nodes {
-			var seen bool
-			for _, del := range res.Service.Nodes {
-				if del.Id == cur.Id {
-					seen = true
-					break
-				}
-			}
-			if !seen {
-				nodes = append(nodes, cur)
-			}
-		}
-
-		// still got nodes, save and return
-		if len(nodes) > 0 {
-			service.Nodes = nodes
-			services[index] = service
-			c.set(service.Name, services)
-			return
-		}
-
-		// zero nodes left
-
-		// only have one thing to delete
-		// nuke the thing
-		if len(services) == 1 {
-			c.del(service.Name)
-			return
-		}
-
-		// still have more than 1 service
-		// check the version and keep what we know
-		var srvs []*registry.Service
-		for _, s := range services {
-			if s.Version != service.Version {
-				srvs = append(srvs, s)
-			}
-		}
-
-		// save
-		c.set(service.Name, srvs)
-	case "override":
-		if service == nil {
-			return
-		}
-
-		c.del(service.Name)
 	}
 }
 
-// run starts the cache watcher loop
-// it creates a new watcher if there's a problem
-func (c *cache) run(service string) {
-	c.Lock()
-	c.running = true
-	c.Unlock()
+func (r *registryRouter) remove(service *registry.Service) {
+	r.serviceslock.RLock()
+	defer r.serviceslock.RUnlock()
 
-	// reset watcher on exit
-	defer func() {
-		c.Lock()
-		c.watched = make(map[string]bool)
-		c.running = false
-		c.Unlock()
-	}()
+	ss, has := r.services[service.Name]
 
-	var a, b int
-
-	for {
-		// exit early if already dead
-		if c.quit() {
-			return
-		}
-
-		// jitter before starting
-		j := rand.Int63n(100)
-		time.Sleep(time.Duration(j) * time.Millisecond)
-
-		// create new watcher
-		w, err := c.Registry.Watch(registry.WatchService(service))
-		if err != nil {
-			if c.quit() {
-				return
-			}
-
-			d := backoff(a)
-			c.setStatus(err)
-
-			if a > 3 {
-				logger.Debug("rcache: ", err, " backing off ", d)
-
-				a = 0
-			}
-
-			time.Sleep(d)
-			a++
-
-			continue
-		}
-
-		// reset a
-		a = 0
-
-		// watch for events
-		if err := c.watch(w); err != nil {
-			if c.quit() {
-				return
-			}
-
-			d := backoff(b)
-			c.setStatus(err)
-
-			if b > 3 {
-				logger.Debug("rcache: ", err, " backing off ", d)
-
-				b = 0
-			}
-
-			time.Sleep(d)
-			b++
-
-			continue
-		}
-
-		// reset b
-		b = 0
-	}
-}
-
-// watch loops the next event and calls update
-// it returns if there's an error
-func (c *cache) watch(w registry.Watcher) error {
-	// used to stop the watch
-	stop := make(chan bool)
-
-	// manage this loop
-	go func() {
-		defer w.Stop()
-
-		select {
-		// wait for exit
-		case <-c.exit:
-			return
-		// we've been stopped
-		case <-stop:
-			return
-		}
-	}()
-
-	for {
-		res, err := w.Next()
-		if err != nil {
-			close(stop)
-			return err
-		}
-
-		// reset the error status since we succeeded
-		if err := c.getStatus(); err != nil {
-			// reset status
-			c.setStatus(nil)
-		}
-
-		c.update(res)
-	}
-}
-
-func (c *cache) GetService(service string, opts ...registry.GetOption) ([]*registry.Service, error) {
-	// get the service
-	services, err := c.get(service)
-	if err != nil {
-		return nil, err
-	}
-
-	// if there's nothing return err
-	if len(services) == 0 {
-		return nil, registry.ErrNotFound
-	}
-
-	// return services
-	return services, nil
-}
-
-func (c *cache) Stop() {
-	c.Lock()
-	defer c.Unlock()
-
-	select {
-	case <-c.exit:
+	if !has || len(ss) == 0 {
 		return
-	default:
-		close(c.exit)
+	}
+
+	for _, s := range ss {
+		if s.Version != service.Version {
+			continue
+		}
+
+		for _, node := range service.Nodes {
+			r.nodes.Delete(node.Id)
+
+			s.Lock()
+			delete(s.Nodes, node.Id)
+			s.Unlock()
+		}
 	}
 }
 
-func (c *cache) String() string {
-	return "cache"
+// store local endpoint cache
+func (r *registryRouter) store(service *registry.Service) {
+	// r.rw.Lock()
+	// defer r.rw.Unlock()
+
+	// r.serviceslock.RLock()
+	// defer r.serviceslock.RUnlock()
+
+	// ss, has := r.services[service.Name]
+	// if !has {
+	// 	ss:=make(map[string]*Service)
+	// }
+
+	// s, has := ss[service.Version]
+	// if !has {
+	// 	s = &Service{
+	// 		Name:     service.Name,
+	// 		Version:  service.Version,
+	// 		Metadata: service.Metadata,
+	// 		Nodes:    make(map[string]*Node),
+	// 	}
+	// 	ss[service.Version] = s
+	// 	r.services[service.Name] = ss
+	// }
+
+	// if s == nil {
+	// 	s := &Service{
+	// 		Name:     service.Name,
+	// 		Version:  service.Version,
+	// 		Metadata: metadata.Copy(service.Metadata),
+	// 	}
+	// 	r.services.Store(service.Name, s)
+	// }
+
+	// for _, node := range service.Nodes {
+	// 	temp := &Node{
+	// 		Id:          node.Id,
+	// 		Address:     node.Address,
+	// 		ServiceName: service.Name,
+	// 		Metadata:    metadata.Copy(node.Metadata),
+	// 	}
+	// 	r.nodes.Store(node.Id, temp)
+
+	// 	s.Lock()
+	// 	s.Nodes[node.Id] = temp
+	// 	s.Unlock()
+	// }
 }
 
-// New returns a new cache
-func New(r registry.Registry, opts ...Option) Cache {
+// watch for endpoint changes
+func (r *registryRouter) watch() {
+	var attempts int
+
+	for {
+		if r.isClosed() {
+			return
+		}
+
+		// watch for changes
+		w, err := r.Watch()
+		if err != nil {
+			attempts++
+			log.Errorf("error watching endpoints: %v", err)
+			time.Sleep(time.Duration(attempts) * time.Second)
+			continue
+		}
+
+		ch := make(chan bool)
+
+		go func() {
+			select {
+			case <-ch:
+				w.Stop()
+			case <-r.exit:
+				w.Stop()
+			}
+		}()
+
+		// reset if we get here
+		attempts = 0
+
+		for {
+			// process next event
+			res, err := w.Next()
+			if err != nil {
+				log.Errorf("error getting next endoint: %v", err)
+				close(ch)
+				break
+			}
+			r.process(res)
+		}
+	}
+}
+
+func (r *registryRouter) Options() Options {
+	return r.opts
+}
+
+func (r *registryRouter) Stop() error {
+	select {
+	case <-r.exit:
+		return nil
+	default:
+		close(r.exit)
+	}
+	return nil
+}
+
+func (r *registryRouter) GetNode(id string) *Node {
+	v, has := r.nodes.Load(id)
+	if !has {
+		return nil
+	}
+	return v.(*Node)
+}
+
+func ConvertNode(node *Node) *registry.Node {
+	node.RLock()
+	defer node.RUnlock()
+
+	ret := &registry.Node{
+		Id:       node.Id,
+		Address:  node.Address,
+		Metadata: metadata.Copy(node.Metadata),
+	}
+	return ret
+}
+
+func ConvertService(s *Service) *registry.Service {
+	s.RLock()
+	defer s.RUnlock()
+
+	ret := &registry.Service{
+		Name:     s.Name,
+		Version:  s.Version,
+		Metadata: s.Metadata,
+	}
+	for _, node := range s.Nodes {
+		ret.Nodes = append(ret.Nodes, ConvertNode(node))
+	}
+	return ret
+}
+
+func (r *registryRouter) GetService(service string, opts ...registry.GetOption) ([]*registry.Service, error) {
+	//TODO:
+	// v, has := r.services.Load(service)
+	// if !has {
+	// 	return nil, registry.ErrNotFound
+	// }
+	// s := v.(*Service)
+	// return ConvertService(s), nil
+	return nil, nil
+}
+
+func (r *registryRouter) Start() error {
+	go r.watch()
+	go r.refresh()
+	return nil
+}
+
+func New(r registry.Registry, opts ...Option) *registryRouter {
 	rand.Seed(time.Now().UnixNano())
 	options := Options{
 		TTL: DefaultTTL,
@@ -478,12 +316,11 @@ func New(r registry.Registry, opts ...Option) Cache {
 		o(&options)
 	}
 
-	return &cache{
+	ret := &registryRouter{
 		Registry: r,
-		opts:     options,
-		watched:  make(map[string]bool),
-		cache:    make(map[string][]*registry.Service),
-		ttls:     make(map[string]time.Time),
 		exit:     make(chan bool),
+		opts:     options,
 	}
+	ret.Start()
+	return ret
 }

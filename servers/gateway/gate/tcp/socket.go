@@ -8,9 +8,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"hotwave/servers/gateway/gate/codec"
-
 	"google.golang.org/protobuf/proto"
+
+	"hotwave/servers/gateway/gate/codec"
 )
 
 type OnMessageFunc func(*Socket, *Packet)
@@ -22,6 +22,16 @@ const (
 	SocketStatConnected    SocketStat = 1
 	SocketStatDisconnected SocketStat = 2
 )
+
+// func (s SocketStat) String() string {
+// 	switch s {
+// 	case SocketStatConnected:
+// 		return "connected"
+// 	case SocketStatDisconnected:
+// 		return "disconnected"
+// 	}
+// 	return "unknown"
+// }
 
 type SocketOptions struct {
 }
@@ -46,6 +56,8 @@ func NewSocket(conn net.Conn, opts ...SocketOption) *Socket {
 }
 
 type Socket struct {
+	sync.RWMutex // export
+
 	conn   net.Conn   // low-level conn fd
 	state  SocketStat // current state
 	id     string
@@ -60,7 +72,7 @@ func (s *Socket) ID() string {
 	return s.id
 }
 
-func ConverPacket(msg *codec.Message) *Packet {
+func ConverPacket(msg *codec.AsyncMessage) *Packet {
 	raw, err := proto.Marshal(msg)
 	if err != nil {
 		return nil
@@ -76,20 +88,19 @@ func ConverPacket(msg *codec.Message) *Packet {
 	return packet
 }
 
-func ConverMessage(p *Packet) *codec.Message {
-	msg := &codec.Message{}
-
-	msg.Body = p.Raw
-	return msg
+func ConverMessage(p *Packet) (*codec.AsyncMessage, error) {
+	msg := &codec.AsyncMessage{}
+	err := proto.Unmarshal(p.Raw, msg)
+	return msg, err
 }
 
-func (a *Socket) Send(msg *codec.Message) error {
+func (a *Socket) Send(msg *codec.AsyncMessage) error {
 	return a.sendPacket(ConverPacket(msg))
 }
 
 func (a *Socket) sendPacket(p *Packet) error {
 	if atomic.LoadInt32(&a.state) == SocketStatDisconnected {
-		return fmt.Errorf("send packet failed, the socket is disconnected")
+		return fmt.Errorf("sendPacket failed, the socket is disconnected")
 	}
 	a.chSend <- p
 	return nil
@@ -109,10 +120,6 @@ func (a *Socket) sendPacket(p *Packet) error {
 // }
 
 func (a *Socket) Recv() (*Packet, error) {
-	if atomic.LoadInt32(&a.state) == SocketStatDisconnected {
-		return nil, fmt.Errorf("recv packet failed, the socket is disconnected")
-	}
-
 	p := &Packet{}
 	if err := a.readPacket(p); err != nil {
 		return nil, err
@@ -128,6 +135,7 @@ func (a *Socket) Close() {
 
 	if a.conn != nil {
 		a.conn.Close()
+		a.conn = nil
 	}
 }
 
@@ -207,6 +215,10 @@ func writeAll(conn net.Conn, raw []byte) (int, error) {
 }
 
 func (a *Socket) readPacket(p *Packet) error {
+	if atomic.LoadInt32(&a.state) == SocketStatDisconnected {
+		return fmt.Errorf("recv packet failed, the socket is disconnected")
+	}
+
 	var err error
 	headRaw := make([]byte, p.HeadLen())
 
@@ -231,6 +243,9 @@ func (a *Socket) readPacket(p *Packet) error {
 }
 
 func (a *Socket) writePacket(p *Packet) error {
+	if atomic.LoadInt32(&a.state) == SocketStatDisconnected {
+		return fmt.Errorf("writePacket failed, the socket is disconnected")
+	}
 	var err error
 
 	head := p.PacketHead.Encode()

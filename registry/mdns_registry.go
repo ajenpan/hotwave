@@ -235,8 +235,9 @@ func (m *mdnsRegistry) Register(service *Service, opts ...RegisterOption) error 
 		}
 		port, _ := strconv.Atoi(pt)
 
-		logger.Debugf("[mdns] registry create new service with ip: %s for: %s", net.ParseIP(host).String(), host)
-
+		if logger.V(logger.DebugLevel, logger.DefaultLogger) {
+			logger.Debugf("[mdns] registry create new service with ip: %s for: %s", net.ParseIP(host).String(), host)
+		}
 		// we got here, new node
 		s, err := mdns.NewMDNSService(
 			node.Id,
@@ -311,9 +312,11 @@ func (m *mdnsRegistry) GetService(service string, opts ...GetOption) ([]*Service
 
 	p := mdns.DefaultParams(service)
 	// set context with timeout
+	fmt.Println(m.opts.Timeout.Seconds())
 	var cancel context.CancelFunc
 	p.Context, cancel = context.WithTimeout(context.Background(), m.opts.Timeout)
 	defer cancel()
+
 	// set entries channel
 	p.Entries = entries
 	// set the domain
@@ -354,17 +357,19 @@ func (m *mdnsRegistry) GetService(service string, opts ...GetOption) ([]*Service
 				addr := ""
 				// prefer ipv4 addrs
 				if len(e.AddrV4) > 0 {
-					addr = e.AddrV4.String()
+					addr = net.JoinHostPort(e.AddrV4.String(), fmt.Sprint(e.Port))
 					// else use ipv6
 				} else if len(e.AddrV6) > 0 {
-					addr = "[" + e.AddrV6.String() + "]"
+					addr = net.JoinHostPort(e.AddrV6.String(), fmt.Sprint(e.Port))
 				} else {
-					logger.Infof("[mdns]: invalid endpoint received: %v", e)
+					if logger.V(logger.InfoLevel, logger.DefaultLogger) {
+						logger.Infof("[mdns]: invalid endpoint received: %v", e)
+					}
 					continue
 				}
 				s.Nodes = append(s.Nodes, &Node{
 					Id:       strings.TrimSuffix(e.Name, "."+p.Service+"."+p.Domain+"."),
-					Address:  net.JoinHostPort(addr, fmt.Sprint(e.Port)),
+					Address:  addr,
 					Metadata: txt.Metadata,
 				})
 
@@ -383,6 +388,10 @@ func (m *mdnsRegistry) GetService(service string, opts ...GetOption) ([]*Service
 
 	// wait for completion
 	<-done
+
+	if p.Context.Err() != nil {
+		fmt.Println(p.Context.Err())
+	}
 
 	// create list and return
 	services := make([]*Service, 0, len(serviceMap))
@@ -582,16 +591,16 @@ func (m *mdnsWatcher) Next() (*Result, error) {
 
 			var addr string
 			if len(e.AddrV4) > 0 {
-				addr = e.AddrV4.String()
+				addr = net.JoinHostPort(e.AddrV4.String(), fmt.Sprint(e.Port))
 			} else if len(e.AddrV6) > 0 {
-				addr = "[" + e.AddrV6.String() + "]"
+				addr = net.JoinHostPort(e.AddrV6.String(), fmt.Sprint(e.Port))
 			} else {
 				addr = e.Addr.String()
 			}
 
 			service.Nodes = append(service.Nodes, &Node{
 				Id:       strings.TrimSuffix(e.Name, suffix),
-				Address:  net.JoinHostPort(addr, fmt.Sprint(e.Port)),
+				Address:  addr,
 				Metadata: txt.Metadata,
 			})
 

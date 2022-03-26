@@ -1,4 +1,4 @@
-package frame
+package hotwave
 
 import (
 	"context"
@@ -10,36 +10,41 @@ import (
 	"github.com/google/uuid"
 	"google.golang.org/grpc"
 
-	protocol "hotwave/frame/proto"
-	"hotwave/frame/router"
 	"hotwave/logger"
+	"hotwave/metadata"
 	"hotwave/registry"
 	utilAddr "hotwave/util/addr"
 	"hotwave/util/backoff"
 )
 
-func NewFrame(opts ...Option) *frame {
-	ret := &frame{
+func New(opts ...Option) *Frame {
+	ret := &Frame{
 		exit: make(chan chan error),
 	}
 
 	options := newOptions(opts...)
+	for _, opt := range opts {
+		opt(&options)
+	}
 
 	if options.NodeId == "" {
 		options.NodeId = uuid.Must(uuid.NewUUID()).String()
 	}
+
 	ret.opts = options
 
-	grpcServer := grpc.NewServer()
-	protocol.RegisterNodeBaseServer(grpcServer, ret)
-	ret.grpcServer = grpcServer
+	ret.grpcServer = grpc.NewServer()
 
-	ret.router = router.NewRouter(router.WithRegistry(options.Registry))
+	// protocol.RegisterNodeBaseServer(grpcServer, ret)
+	// infos := grpcServer.GetServiceInfo()
+	// for _, info := range infos {
+	// 	// info.
+	// }
 	return ret
 }
 
-type frame struct {
-	protocol.UnimplementedNodeBaseServer
+type Frame struct {
+	// protocol.UnimplementedNodeBaseServer
 
 	sync.RWMutex
 	// marks the serve as started
@@ -50,28 +55,15 @@ type frame struct {
 	opts       Options
 	grpcServer *grpc.Server
 
-	exit   chan chan error
-	router router.Router
-}
-
-func (f *frame) GetService(name string) *router.Service {
-	return f.router.GetService(name)
+	exit chan chan error
 }
 
 // export for grpc handler
-func (f *frame) RegisterService(desc *grpc.ServiceDesc, impl interface{}) {
+func (f *Frame) RegisterService(desc *grpc.ServiceDesc, impl interface{}) {
 	f.grpcServer.RegisterService(desc, impl)
 }
 
-func (f *frame) Stop() error {
-	recvChan := make(chan error)
-	f.exit <- recvChan
-	f.grpcServer.Stop()
-	f.router.Close()
-	return <-recvChan
-}
-
-func (f *frame) Start() error {
+func (f *Frame) Start() error {
 	f.RLock()
 	if f.started {
 		f.RUnlock()
@@ -86,11 +78,13 @@ func (f *frame) Start() error {
 		return err
 	}
 
-	//TODO: how to hold the error?
+	recverr := make(chan error, 1)
 	go func() {
+		defer close(recverr)
 		err := f.grpcServer.Serve(lis)
 		if err != nil {
 			logger.Errorf("grpc server error: %s", err)
+			recverr <- err
 		}
 	}()
 
@@ -106,7 +100,11 @@ func (f *frame) Start() error {
 
 	go f.keepRegistered()
 
-	if err := f.router.Start(); err != nil {
+	select {
+	case err = <-recverr:
+	default:
+	}
+	if err != nil {
 		return err
 	}
 
@@ -116,14 +114,33 @@ func (f *frame) Start() error {
 	return nil
 }
 
-func (f *frame) Options() Options {
+func (f *Frame) Stop() error {
+	f.RLock()
+	if !f.started {
+		f.RUnlock()
+		return nil
+	}
+	f.RUnlock()
+
+	recvChan := make(chan error)
+	f.exit <- recvChan
+	f.grpcServer.Stop()
+
+	f.Lock()
+	f.rsvc = nil
+	f.started = false
+	f.Unlock()
+	return <-recvChan
+}
+
+func (f *Frame) Options() Options {
 	f.RLock()
 	opts := f.opts
 	f.RUnlock()
 	return opts
 }
 
-func (f *frame) keepRegistered() {
+func (f *Frame) keepRegistered() {
 	config := f.Options()
 	t := new(time.Ticker)
 	// only process if it exists
@@ -180,7 +197,7 @@ func (f *frame) keepRegistered() {
 	ch <- nil
 }
 
-func (f *frame) register() error {
+func (f *Frame) register() error {
 	f.RLock()
 	rsvc := f.rsvc
 	f.RUnlock()
@@ -217,9 +234,9 @@ func (f *frame) register() error {
 		return nil
 	}
 
+	var cacheService bool
 	var err error
 	var advt, host, port string
-	var cacheService bool
 
 	advt = config.Address
 	if cnt := strings.Count(advt, ":"); cnt >= 1 {
@@ -241,32 +258,20 @@ func (f *frame) register() error {
 		return err
 	}
 
-	// make copy of metadata
-	mapCopy := func(originalMap map[string]string) map[string]string {
-		targetMap := make(map[string]string, len(originalMap))
-		for key, value := range originalMap {
-			targetMap[key] = value
-		}
-		return targetMap
-	}
-	md := mapCopy(config.Metadata)
-
 	if port != "" {
 		addr = utilAddr.HostPort(addr, port)
 	}
 
 	// register service
 	node := &registry.Node{
-		Id:       config.Name + "-" + config.NodeId,
+		Id:       config.Name + "." + config.NodeId,
 		Address:  addr,
-		Metadata: md,
+		Metadata: metadata.Copy(config.Metadata),
 	}
 
 	node.Metadata["server"] = "mucp"
 	node.Metadata["registry"] = config.Registry.String()
 	node.Metadata["protocol"] = "mucp"
-
-	f.RLock()
 
 	service := &registry.Service{
 		Name:    config.Name,
@@ -274,9 +279,9 @@ func (f *frame) register() error {
 		Nodes:   []*registry.Node{node},
 	}
 
+	f.RLock()
 	// get registered value
 	registered := f.registered
-
 	f.RUnlock()
 
 	if !registered {
@@ -306,21 +311,16 @@ func (f *frame) register() error {
 	return nil
 }
 
-func (f *frame) deregister() error {
+func (f *Frame) deregister() error {
 	var err error
-	var advt, host string
+	var advt, host, port string
 
 	config := f.Options()
 
-	// check the advertise address first
-	// if it exists then use it, otherwise
-	// use the address
-
 	advt = config.Address
-
 	if cnt := strings.Count(advt, ":"); cnt >= 1 {
 		// ipv6 address in format [host]:port or ipv4 host:port
-		host, _, err = net.SplitHostPort(advt)
+		host, port, err = net.SplitHostPort(advt)
 		if err != nil {
 			return err
 		}
@@ -333,8 +333,12 @@ func (f *frame) deregister() error {
 		return err
 	}
 
+	if port != "" {
+		addr = utilAddr.HostPort(addr, port)
+	}
+
 	node := &registry.Node{
-		Id:      config.Name + "-" + config.NodeId,
+		Id:      config.Name + "." + config.NodeId,
 		Address: addr,
 	}
 

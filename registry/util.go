@@ -1,6 +1,6 @@
 package registry
 
-func addNodes(old, neu []*Node) []*Node {
+func AddNodes(old, neu []*Node) []*Node {
 	nodes := make([]*Node, len(neu))
 	// add all new nodes
 	for i, n := range neu {
@@ -31,7 +31,7 @@ func addNodes(old, neu []*Node) []*Node {
 	return nodes
 }
 
-func delNodes(old, del []*Node) []*Node {
+func DelNodes(old, del []*Node) []*Node {
 	var nodes []*Node
 	for _, o := range old {
 		var rem bool
@@ -95,7 +95,7 @@ func Merge(olist []*Service, nlist []*Service) []*Service {
 				// make copy
 				*sp = *o
 				// set nodes
-				sp.Nodes = addNodes(o.Nodes, n.Nodes)
+				sp.Nodes = AddNodes(o.Nodes, n.Nodes)
 
 				// mark as seen
 				seen = true
@@ -127,7 +127,7 @@ func Remove(old, del []*Service) []*Service {
 
 		for _, s := range del {
 			if srv.Version == s.Version {
-				srv.Nodes = delNodes(srv.Nodes, s.Nodes)
+				srv.Nodes = DelNodes(srv.Nodes, s.Nodes)
 
 				if len(srv.Nodes) == 0 {
 					rem = true

@@ -1,4 +1,4 @@
-package frame
+package hotwave
 
 import (
 	"context"
@@ -55,5 +55,16 @@ func Name(n string) Option {
 func Version(v string) Option {
 	return func(o *Options) {
 		o.Version = v
+	}
+}
+
+func Registry(r registry.Registry) Option {
+	return func(o *Options) {
+		o.Registry = r
+	}
+}
+func Address(addr string) Option {
+	return func(o *Options) {
+		o.Address = addr
 	}
 }
