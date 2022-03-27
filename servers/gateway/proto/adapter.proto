@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package gateway;
+package adapter;
 
 option go_package = "./servers/gateway/proto;proto";
 

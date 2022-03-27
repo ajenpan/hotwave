@@ -14,38 +14,3 @@ message SendMessageToUserRequest {
 }
 
 message SendMessageToUserResponse {}
-
-message CaptchaQuestion {
-  string captch_id = 1;
-  string captch_type = 2;
-  bytes catpch_raw = 3;
-}
-
-message CaptchaAnswer {
-  string captch_id = 1;
-  string captch_type = 2;
-  string answer = 3;
-}
-
-message AccountInfo {
-  string account = 1;
-  string passwd = 2;
-  CaptchaAnswer answer = 3;
-}
-
-message SessionInfo {
-  string account = 1;
-  string session = 2;
-}
-
-message LoginRequest {
-  oneof checker {
-    AccountInfo account_info = 1;
-    SessionInfo session_info = 2;
-  }
-}
-
-message LoginResponse {
-  enum Flag { Success = 0; }
-  Flag flag = 1;
-}
