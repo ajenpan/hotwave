@@ -1,0 +1,1 @@
+./gormt.exe -H="localhost" -d=account -u=root -p=123456 -F=false -o=account
