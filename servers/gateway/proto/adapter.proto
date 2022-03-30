@@ -10,14 +10,13 @@ service GateAdapter {
 }
 
 message ClientMessage {
-  string name = 1;
-
   enum MessageType {
     REQUEST = 0;
     RESPONSE = 1;
     ASYNC = 2;
   }
 
+  string msg_name = 1;
   map<string, string> meta = 2;
   bytes body = 3;
   string nodeid = 4;
@@ -26,7 +25,7 @@ message ClientMessage {
 
 message UserMessageWraper {
   string gateway = 1;
-  string name = 2;
+  string msg_name = 2;
   map<string, string> meta = 3;
   bytes body = 4;
   uint64 user_id = 5;

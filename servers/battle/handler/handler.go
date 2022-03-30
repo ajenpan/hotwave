@@ -79,14 +79,14 @@ func (h *Handler) WatcherJoinBattle(ctx context.Context, in *proto.WatcherJoinBa
 
 func (h *Handler) OnUserMessage(msg *gateproto.UserMessageWraper) {
 	// msg.UserId
-	md := proto.File_servers_battle_proto_battle_proto.Messages().ByName(protoreflect.Name(msg.Name))
+	md := proto.File_servers_battle_proto_battle_proto.Messages().ByName(protoreflect.Name(msg.MsgName))
 
 	md.Options().ProtoReflect().New()
 	// proto.File_servers_battle_proto_battle_proto.Messages().ByName(protoreflect.Name(msg.Name)).new
 }
 
 func (h *Handler) UserMessage(ctx context.Context, in *gateproto.UserMessageWraper) (*gateproto.SteamClosed, error) {
-	logger.Info("UserMessage", in.UserId, in.Name)
+	logger.Info("UserMessage", in.UserId, in.MsgName)
 	return &gateproto.SteamClosed{}, nil
 }
 

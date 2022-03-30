@@ -21,6 +21,7 @@ import (
 	"hotwave/servers/gateway/gate/codec"
 	"hotwave/servers/gateway/proto"
 	"hotwave/servers/gateway/router"
+	utlhandle "hotwave/util/handle"
 )
 
 func NewGater(frame *frame.Frame) *Gater {
@@ -35,16 +36,16 @@ func NewGater(frame *frame.Frame) *Gater {
 		router: router,
 	}
 
-	g.gateCallTable = ExtractProtoFile(proto.File_servers_gateway_proto_gate_proto, g)
+	g.gateCallTable = utlhandle.ExtractProtoFile(proto.File_servers_gateway_proto_gate_proto, g)
 
-	g.gateCallTable.Range(func(key string, value *Method) bool {
+	g.gateCallTable.Range(func(key string, value *utlhandle.Method) bool {
 		logger.Infof("handler gate message: %s", key)
 		return true
 	})
 
 	for _, v := range []string{
-		string(protobuf.MessageName(&proto.LoginRequest{})),
-		string(protobuf.MessageName(&proto.EchoMessage{})),
+		strings.TrimSuffix(string(protobuf.MessageName(&proto.LoginRequest{})), "Request"),
+		strings.TrimSuffix(string(protobuf.MessageName(&proto.EchoRequest{})), "Request"),
 	} {
 		g.allowList.Store(v, true)
 	}
@@ -83,7 +84,7 @@ type Gater struct {
 
 	allowList sync.Map
 
-	gateCallTable *CallTable
+	gateCallTable *utlhandle.CallTable
 }
 
 func (g *Gater) onNodeWatch(res *registry.Result) {
@@ -126,17 +127,29 @@ func (g *Gater) SendSessionErrorAndClose(session gate.Session, err error) {
 	session.Close()
 }
 
-func NewConn(node *router.Node) *grpc.ClientConn {
-	c, err := grpc.Dial(node.Address)
-	if err != nil {
+func sendMsgToUser(s gate.Session, msg protobuf.Message) error {
+	if s == nil {
+		return fmt.Errorf("session is nil")
+	}
+
+	if msg == nil {
 		return nil
 	}
-	return c
+	body, err := protobuf.Marshal(msg)
+	if err != nil {
+		return err
+	}
+
+	warp := &codec.AsyncMessage{
+		Body:    body,
+		MsgName: string(protobuf.MessageName(msg)),
+	}
+	return s.Send(warp)
 }
 
 func (g *Gater) OnGateMessage(session gate.Session, msg *codec.AsyncMessage) {
-	name := protoreflect.FullName(msg.Name)
-	serverName := name.Parent()
+	name := protoreflect.FullName(msg.MsgName)
+	serverName := string(name.Parent())
 
 	uid := session.UID()
 
@@ -146,21 +159,22 @@ func (g *Gater) OnGateMessage(session gate.Session, msg *codec.AsyncMessage) {
 			return has
 		}
 
-		if !allowChekcer(msg.Name) {
-			g.SendSessionErrorAndClose(session, fmt.Errorf("no permition to send name:%s", msg.Name))
+		if !allowChekcer(msg.MsgName) {
+			g.SendSessionErrorAndClose(session, fmt.Errorf("no permition to send name:%s", msg.MsgName))
 			return
 		}
 	}
 
 	converMsg := &proto.UserMessageWraper{
-		Name:   msg.Name,
-		Meta:   msg.Meta,
-		Body:   msg.Body,
-		UserId: uid,
+		MsgName: msg.MsgName,
+		Meta:    msg.Meta,
+		Body:    msg.Body,
+		UserId:  uid,
 	}
 
-	if string(serverName) == "gate" {
-		g.OnUserMessage(converMsg)
+	//TODO : no special server
+	if serverName == "gate" {
+		g.OnUserMessage(session, converMsg)
 		return
 	}
 
@@ -173,7 +187,7 @@ func (g *Gater) OnGateMessage(session gate.Session, msg *codec.AsyncMessage) {
 			msg.Nodeid = v.(string)
 			node = g.router.GetNode(msg.Nodeid)
 		} else {
-			// node = g.router.GetServices(msg.Name)
+			g.router.GetService(serverName)
 		}
 	}
 	client := g.GetGateAdapterClient(node)
@@ -190,47 +204,49 @@ func (g *Gater) OnGateMessage(session gate.Session, msg *codec.AsyncMessage) {
 
 func (g *Gater) OnGateConnStat(session gate.Session, status gate.SocketStat) {
 	fmt.Printf("session:%s, connect state:%v \n", session.ID(), status)
-
 	switch status {
 	case gate.SocketStatConnected:
 	case gate.SocketStatDisconnected:
 	}
 }
 
-func (g *Gater) OnUserMessage(msg *proto.UserMessageWraper) {
-	logger.Infof("OnUserMessage: %s", msg.Name)
+func (g *Gater) OnUserMessage(s gate.Session, msg *proto.UserMessageWraper) {
+	logger.Infof("OnUserMessage: %s", msg.MsgName)
 
-	g.gateCallTable.Get(msg.Name)
+	g.gateCallTable.Get(msg.MsgName)
 
-	s, has := g.user2session.Load(msg.UserId)
-	if !has {
-		return
-	}
-	s = s.(gate.Session)
-
-	method := g.gateCallTable.Get(msg.Name)
+	method := g.gateCallTable.Get(msg.MsgName)
 	if method == nil {
 		return
 	}
 
-	reqestV := reflect.New(method.Req)
-
+	reqestV := reflect.New(method.RequestType)
 	reqest := reqestV.Interface().(protobuf.Message)
-	err := protobuf.Unmarshal(msg.Body, reqest)
-	if err != nil {
+
+	if err := protobuf.Unmarshal(msg.Body, reqest); err != nil {
 		logger.Error(err)
 		return
 	}
-
-	callResult := method.Call([]reflect.Value{reflect.ValueOf(s), reflect.ValueOf(reqest)})
-
-	if len(callResult) > 0 && !callResult[0].IsNil() {
-		err, ok := callResult[0].Interface().(error)
-		if ok {
-			if err != nil {
-				logger.Error(err)
-			}
+	ctx := CtxWithSession(context.Background(), s)
+	callResult := method.Call(reflect.ValueOf(g), reflect.ValueOf(ctx), reflect.ValueOf(reqest))
+	var respErr error
+	if len(callResult) == 1 {
+		if ierr, ok := callResult[0].Interface().(error); ok {
+			respErr = ierr
 		}
+	} else if len(callResult) == 2 {
+		if resp, ok := callResult[0].Interface().(protobuf.Message); ok {
+			sendMsgToUser(s, resp)
+		}
+		if err, ok := callResult[1].Interface().(error); ok {
+			respErr = err
+		}
+	} else {
+		logger.Warn("call result is not 1 or 2")
+	}
+
+	if respErr != nil {
+		logger.Errorf("call method error: %s", respErr)
 	}
 
 }
@@ -251,7 +267,18 @@ func (g *Gater) SendMessageToUse(ctx context.Context, in *proto.SendMessageToUse
 	return out, err
 }
 
-func (g *Gater) Login(session gate.Session, in *proto.LoginRequest) (*proto.LoginResponse, error) {
+type CtxSessionKey struct{}
+
+func CtxWithSession(ctx context.Context, session gate.Session) context.Context {
+	return context.WithValue(ctx, CtxSessionKey{}, session)
+}
+
+func CtxWithSessionValue(ctx context.Context) (gate.Session, bool) {
+	v, ok := ctx.Value(CtxSessionKey{}).(gate.Session)
+	return v, ok
+}
+
+func (g *Gater) Login(ctx context.Context, in *proto.LoginRequest) (*proto.LoginResponse, error) {
 	out := &proto.LoginResponse{
 		Flag: proto.LoginResponse_Success,
 	}
@@ -259,18 +286,30 @@ func (g *Gater) Login(session gate.Session, in *proto.LoginRequest) (*proto.Logi
 	switch c := in.Checker.(type) {
 	case *proto.LoginRequest_AccountInfo:
 		if strings.HasPrefix(c.AccountInfo.Account, "test") {
-			return out, nil
+
 		}
 	case *proto.LoginRequest_SessionInfo:
 		{
-			return out, nil
 		}
+	default:
+		out.Flag = proto.LoginResponse_UnknowError
+		return out, nil
 	}
 
-	out.Flag = proto.LoginResponse_UnknowError
+	uid := uint64(1001)
+
+	if s, ok := CtxWithSessionValue(ctx); ok {
+		s.SetUID(uid)
+		g.user2session.Store(uid, s)
+	}
+
 	return out, nil
 }
 
-func (g *Gater) Echo(session gate.Session, in *proto.EchoMessage) (*proto.EchoMessage, error) {
-	return in, nil
+func (g *Gater) Echo(ctx context.Context, in *proto.EchoRequest) (*proto.EchoResponse, error) {
+	out := &proto.EchoResponse{
+		Data: in.Data,
+	}
+
+	return out, nil
 }

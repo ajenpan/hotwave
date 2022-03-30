@@ -23,5 +23,4 @@ func TestClientReconnect(t *testing.T) {
 	if err := c.Connect(); err != nil {
 		t.Fatal(err)
 	}
-	// c.send
 }

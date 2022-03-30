@@ -35,11 +35,6 @@ func New(opts ...Option) *Frame {
 
 	ret.grpcServer = grpc.NewServer()
 
-	// protocol.RegisterNodeBaseServer(grpcServer, ret)
-	// infos := grpcServer.GetServiceInfo()
-	// for _, info := range infos {
-	// 	// info.
-	// }
 	return ret
 }
 
@@ -77,10 +72,20 @@ func (f *Frame) Start() error {
 	if err != nil {
 		return err
 	}
+	logger.Infof("Server %s-%s started", config.Name, config.NodeId)
 
 	recverr := make(chan error, 1)
 	go func() {
 		defer close(recverr)
+
+		//update for real address when the port is random, eg. localhost:0
+		addr := f.opts.Address
+		f.opts.Address = lis.Addr().String()
+		defer func() {
+			//set back the address
+			f.opts.Address = addr
+		}()
+
 		err := f.grpcServer.Serve(lis)
 		if err != nil {
 			logger.Errorf("grpc server error: %s", err)
@@ -88,25 +93,21 @@ func (f *Frame) Start() error {
 		}
 	}()
 
-	//update for real address when the port is random, eg. localhost:0
-	addr := f.opts.Address
-	f.opts.Address = lis.Addr().String()
-	logger.Info(addr)
+	select {
+	case err = <-recverr:
+		//wait 1s for error
+	case <-time.After(time.Second * 1):
+	}
+
+	if err != nil {
+		return err
+	}
 
 	// register self to the world
 	if err := f.register(); err != nil {
 		return err
 	}
-
 	go f.keepRegistered()
-
-	select {
-	case err = <-recverr:
-	default:
-	}
-	if err != nil {
-		return err
-	}
 
 	f.Lock()
 	f.started = true
@@ -148,8 +149,9 @@ func (f *Frame) keepRegistered() {
 		// new ticker
 		t = time.NewTicker(f.opts.RegisterInterval)
 	}
-	// return error chan
+
 	var ch chan error
+
 	func() {
 		var err error
 
@@ -286,7 +288,7 @@ func (f *Frame) register() error {
 
 	if !registered {
 		if logger.V(logger.InfoLevel, logger.DefaultLogger) {
-			logger.Infof("Registry [%s] Registering node: %s", config.Registry.String(), node.Id)
+			logger.Infof("[%s] Registering node:%s, address:%s", config.Registry.String(), node.Id, node.Address)
 		}
 	}
 

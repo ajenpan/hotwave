@@ -17,7 +17,13 @@
             "request": "launch",
             "mode": "auto",
             "program": "${workspaceRoot}/servers/gateway/cmd",
+        },
+        {
+            "name": "Launch account",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceRoot}/servers/account/cmd",
         }
-
     ]
 }

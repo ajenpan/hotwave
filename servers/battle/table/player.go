@@ -5,20 +5,20 @@ import (
 
 	"hotwave/servers/battle"
 	pb "hotwave/servers/battle/proto"
-	"hotwave/user"
+	// "hotwave/user"
 )
 
 type player struct {
 	*pb.PlayerInfo
-	user.User
+	// user.User
 	desk *Table
 }
 
-func NewPlayer(u user.User) battle.Player {
-	return &player{
-		User: u,
-	}
-}
+// func NewPlayer(u user.User) battle.Player {
+// 	return &player{
+// 		User: u,
+// 	}
+// }
 
 func (p *player) GetScore() int64 {
 	return int64(p.Score)

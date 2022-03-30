@@ -67,8 +67,8 @@ func (s *Server) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 		session := NewSession(rw, r)
 
 		s.opts.Adapter.OnGateMessage(session, &codec.AsyncMessage{
-			Name: r.URL.Path,
-			Body: raw,
+			MsgName: r.URL.Path,
+			Body:    raw,
 		})
 	}
 

@@ -37,8 +37,7 @@ type ClientOptions struct {
 var DefaultClientOptions = ClientOptions{
 	RemoteAddress: "",
 	OnMessage:     func(s *Client, p *Packet) {},
-	OnConnStat: func(s *Client, state SocketStat) {
-	},
+	OnConnStat:    func(s *Client, state SocketStat) {},
 }
 
 func NewClient(opts *ClientOptions) *Client {

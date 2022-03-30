@@ -2,12 +2,11 @@ package battle
 
 import (
 	protobuf "google.golang.org/protobuf/proto"
-
-	"hotwave/user"
+	// "hotwave/user"
 )
 
 type Player interface {
-	user.User
+	// user.User
 	GetSeatID() SeatID
 	GetScore() int64 //game jetton
 	IsRobot() bool

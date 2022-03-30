@@ -31,7 +31,7 @@ func TestCreateBattle(t *testing.T) {
 func newMessageWarp(msg protobuf.Message) *gatewayproto.UserMessageWraper {
 	ret := &gatewayproto.UserMessageWraper{
 		Gateway: "",
-		Name:    string(protobuf.MessageName(msg)),
+		MsgName: string(protobuf.MessageName(msg)),
 		UserId:  1,
 	}
 	ret.Body, _ = protobuf.Marshal(msg)

@@ -23,15 +23,15 @@ const (
 	SocketStatDisconnected SocketStat = 2
 )
 
-// func (s SocketStat) String() string {
-// 	switch s {
-// 	case SocketStatConnected:
-// 		return "connected"
-// 	case SocketStatDisconnected:
-// 		return "disconnected"
-// 	}
-// 	return "unknown"
-// }
+func SocketStatString(s SocketStat) string {
+	switch s {
+	case SocketStatConnected:
+		return "connected"
+	case SocketStatDisconnected:
+		return "disconnected"
+	}
+	return "unknown"
+}
 
 type SocketOptions struct {
 }
