@@ -11,7 +11,7 @@ import (
 type Token = jwt.Token
 
 type TokenGenerater interface {
-	Generate(ctx context.Context, UserInfo *models.User) (token *Token)
+	Generate(ctx context.Context, UserInfo *models.Users) (token *Token)
 	SignedString(ctx context.Context, token *Token) string
 	Parse(ctx context.Context, raw string) *Token
 }

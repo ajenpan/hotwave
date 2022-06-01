@@ -22,14 +22,14 @@ type Memory struct {
 }
 
 func (m *Memory) StoreUser(ctx context.Context, user *AuthCacheInfo, exprieAt time.Duration) error {
-	m.DeleteUser(ctx, user.User.Id)
+	m.DeleteUser(ctx, user.User.UID)
 
 	m.rwLock.Lock()
 	defer m.rwLock.Unlock()
 
-	m.cache[user.User.Id] = user
-	m.name2id[user.User.Name] = user.User.Id
-	m.token2id[user.AssessToken] = user.User.Id
+	m.cache[user.User.UID] = user
+	m.name2id[user.User.Uname] = user.User.UID
+	m.token2id[user.AssessToken] = user.User.UID
 	return nil
 }
 
@@ -39,7 +39,7 @@ func (m *Memory) DeleteUser(ctx context.Context, uid int64) {
 
 	if u, has := m.cache[uid]; has {
 		delete(m.cache, uid)
-		delete(m.name2id, u.User.Name)
+		delete(m.name2id, u.User.Uname)
 		delete(m.token2id, u.AssessToken)
 	}
 }

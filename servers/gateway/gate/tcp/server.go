@@ -13,9 +13,9 @@ type ServerOption func(*ServerOptions)
 
 type ServerOptions struct {
 	Address string
-	// The interval on which to register
+
 	HeatbeatInterval time.Duration
-	Adapter          gate.AsyncAdapter
+	Adapter          gate.GateAdapter
 }
 
 func NewServer(opts *ServerOptions) *Server {
@@ -155,7 +155,7 @@ func (n *Server) accept(socket *Socket) {
 							log.Error(err)
 						}
 					}()
-					n.opts.Adapter.OnGateMessage(socket, msg)
+					n.opts.Adapter.OnGateAsync(socket, msg)
 				}()
 			}
 		case PacketTypeHeartbeat:

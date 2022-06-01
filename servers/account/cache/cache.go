@@ -8,7 +8,7 @@ import (
 )
 
 type AuthCacheInfo struct {
-	User         *models.User
+	User         *models.Users
 	AssessToken  string
 	RefreshToken string
 	LoginAt      string

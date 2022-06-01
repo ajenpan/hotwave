@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.19.4
-// source: servers/gateway/proto/gate.proto
+// source: gate.proto
 
 package proto
 
@@ -137,5 +137,5 @@ var Gate_ServiceDesc = grpc.ServiceDesc{
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "servers/gateway/proto/gate.proto",
+	Metadata: "gate.proto",
 }

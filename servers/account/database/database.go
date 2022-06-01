@@ -3,6 +3,7 @@ package database
 import (
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"gorm.io/gorm/schema"
 )
 
@@ -14,5 +15,6 @@ func CreateMysqlClient(dsn string) (*gorm.DB, error) {
 		},
 		// Logger: log.NewGormLogrus(),
 	})
+	logger.Default = logger.Default.LogMode(logger.Info)
 	return dbc, err
 }

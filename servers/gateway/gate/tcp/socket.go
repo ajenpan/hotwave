@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"google.golang.org/protobuf/proto"
+	protobuf "google.golang.org/protobuf/proto"
 
-	"hotwave/servers/gateway/gate/codec"
+	"hotwave/servers/gateway/proto"
 )
 
 type OnMessageFunc func(*Socket, *Packet)
@@ -72,8 +73,8 @@ func (s *Socket) ID() string {
 	return s.id
 }
 
-func ConverPacket(msg *codec.AsyncMessage) *Packet {
-	raw, err := proto.Marshal(msg)
+func ConverPacket(msg *proto.ClientMessageWraper) *Packet {
+	raw, err := protobuf.Marshal(msg)
 	if err != nil {
 		return nil
 	}
@@ -88,13 +89,13 @@ func ConverPacket(msg *codec.AsyncMessage) *Packet {
 	return packet
 }
 
-func ConverMessage(p *Packet) (*codec.AsyncMessage, error) {
-	msg := &codec.AsyncMessage{}
-	err := proto.Unmarshal(p.Raw, msg)
+func ConverMessage(p *Packet) (*proto.ClientMessageWraper, error) {
+	msg := &proto.ClientMessageWraper{}
+	err := protobuf.Unmarshal(p.Raw, msg)
 	return msg, err
 }
 
-func (a *Socket) Send(msg *codec.AsyncMessage) error {
+func (a *Socket) SendWrap(msg *proto.ClientMessageWraper) error {
 	return a.sendPacket(ConverPacket(msg))
 }
 
@@ -106,18 +107,27 @@ func (a *Socket) sendPacket(p *Packet) error {
 	return nil
 }
 
-// func (a *Socket) Send(msg proto.Message) error {
+func (a *Socket) Send(msg protobuf.Message) error {
+	raw, err := protobuf.Marshal(msg)
+	if err != nil {
+		return err
+	}
 
-// 	raw, err := proto.Marshal(msg)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	warp := &codec.Message{
-// 		Name: string(proto.MessageName(msg)),
-// 		Body: raw,
-// 	}
-// 	return a.sendMessage(warp)
-// }
+	methodName := string(protobuf.MessageName(msg))
+	wrap := &proto.ClientMessageWraper{
+		Body: raw,
+	}
+
+	if strings.HasSuffix(methodName, "Response") {
+		wrap.Method = methodName[:len(methodName)-len("Response")]
+		wrap.Typ = proto.ClientMessageWraper_Response
+	} else {
+		wrap.Method = methodName
+		wrap.Typ = proto.ClientMessageWraper_Async
+	}
+
+	return a.SendWrap(wrap)
+}
 
 func (a *Socket) Recv() (*Packet, error) {
 	p := &Packet{}

@@ -1,12 +1,15 @@
 package gate
 
 import (
+	"context"
 	"fmt"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"hotwave/servers/gateway/gate/codec"
+	protocol "hotwave/servers/gateway/proto"
+
+	protobuf "google.golang.org/protobuf/proto"
 )
 
 type Session interface {
@@ -18,7 +21,8 @@ type Session interface {
 	SetMeta(string, interface{})
 	GetMeta(string) (interface{}, bool)
 
-	Send(*codec.AsyncMessage) error
+	Send(protobuf.Message) error
+
 	Close()
 
 	sync.Locker
@@ -45,6 +49,15 @@ const (
 )
 
 type AsyncAdapter interface {
-	OnGateMessage(Session, *codec.AsyncMessage)
+	OnGateAsync(Session, *protocol.ClientMessageWraper)
 	OnGateConnStat(Session, SocketStat)
+}
+
+type MethodAdapter interface {
+	OnGateMethod(context.Context, *protocol.ClientMessageWraper) (*protocol.ClientMessageWraper, error)
+}
+
+type GateAdapter interface {
+	AsyncAdapter
+	MethodAdapter
 }

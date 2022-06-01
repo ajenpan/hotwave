@@ -1,1 +1,1 @@
-./gormt.exe -H="localhost" -d=account -u=root -p=123456 -F=false -o=account
+./gormt.exe -H="localhost" -d=account -u=root -p=123456 -F=false -o=models

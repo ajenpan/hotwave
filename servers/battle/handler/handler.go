@@ -77,20 +77,20 @@ func (h *Handler) WatcherJoinBattle(ctx context.Context, in *proto.WatcherJoinBa
 	return out, nil
 }
 
-func (h *Handler) OnUserMessage(msg *gateproto.UserMessageWraper) {
+func (h *Handler) OnUserAsyncMessage(msg *gateproto.AsyncMessageWraper) {
 	// msg.UserId
-	md := proto.File_servers_battle_proto_battle_proto.Messages().ByName(protoreflect.Name(msg.MsgName))
+	md := proto.File_servers_battle_proto_battle_proto.Messages().ByName(protoreflect.Name(msg.Topic))
 
 	md.Options().ProtoReflect().New()
 	// proto.File_servers_battle_proto_battle_proto.Messages().ByName(protoreflect.Name(msg.Name)).new
 }
 
-func (h *Handler) UserMessage(ctx context.Context, in *gateproto.UserMessageWraper) (*gateproto.SteamClosed, error) {
-	logger.Info("UserMessage", in.UserId, in.MsgName)
+func (h *Handler) UserMessage(ctx context.Context, in *gateproto.AsyncMessageWraper) (*gateproto.SteamClosed, error) {
+	logger.Info("UserMessage", in.UserId, in.Topic)
 	return &gateproto.SteamClosed{}, nil
 }
 
-func (h *Handler) UserStream(s gateproto.GateAdapter_UserStreamServer) error {
+func (h *Handler) UserStream(s gateproto.GateAdapter_EventStreamServer) error {
 	return nil
 }
 

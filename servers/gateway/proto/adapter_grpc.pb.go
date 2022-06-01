@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.19.4
-// source: servers/gateway/proto/adapter.proto
+// source: adapter.proto
 
 package proto
 
@@ -22,8 +22,8 @@ const _ = grpc.SupportPackageIsVersion7
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GateAdapterClient interface {
-	UserMessage(ctx context.Context, in *UserMessageWraper, opts ...grpc.CallOption) (*SteamClosed, error)
-	UserStream(ctx context.Context, opts ...grpc.CallOption) (GateAdapter_UserStreamClient, error)
+	UserEvent(ctx context.Context, in *AsyncMessageWraper, opts ...grpc.CallOption) (*SteamClosed, error)
+	EventStream(ctx context.Context, opts ...grpc.CallOption) (GateAdapter_EventStreamClient, error)
 }
 
 type gateAdapterClient struct {
@@ -34,40 +34,40 @@ func NewGateAdapterClient(cc grpc.ClientConnInterface) GateAdapterClient {
 	return &gateAdapterClient{cc}
 }
 
-func (c *gateAdapterClient) UserMessage(ctx context.Context, in *UserMessageWraper, opts ...grpc.CallOption) (*SteamClosed, error) {
+func (c *gateAdapterClient) UserEvent(ctx context.Context, in *AsyncMessageWraper, opts ...grpc.CallOption) (*SteamClosed, error) {
 	out := new(SteamClosed)
-	err := c.cc.Invoke(ctx, "/adapter.GateAdapter/UserMessage", in, out, opts...)
+	err := c.cc.Invoke(ctx, "/adapter.GateAdapter/UserEvent", in, out, opts...)
 	if err != nil {
 		return nil, err
 	}
 	return out, nil
 }
 
-func (c *gateAdapterClient) UserStream(ctx context.Context, opts ...grpc.CallOption) (GateAdapter_UserStreamClient, error) {
-	stream, err := c.cc.NewStream(ctx, &GateAdapter_ServiceDesc.Streams[0], "/adapter.GateAdapter/UserStream", opts...)
+func (c *gateAdapterClient) EventStream(ctx context.Context, opts ...grpc.CallOption) (GateAdapter_EventStreamClient, error) {
+	stream, err := c.cc.NewStream(ctx, &GateAdapter_ServiceDesc.Streams[0], "/adapter.GateAdapter/EventStream", opts...)
 	if err != nil {
 		return nil, err
 	}
-	x := &gateAdapterUserStreamClient{stream}
+	x := &gateAdapterEventStreamClient{stream}
 	return x, nil
 }
 
-type GateAdapter_UserStreamClient interface {
-	Send(*UserMessageWraper) error
-	Recv() (*UserMessageWraper, error)
+type GateAdapter_EventStreamClient interface {
+	Send(*AsyncMessageWraper) error
+	Recv() (*AsyncMessageWraper, error)
 	grpc.ClientStream
 }
 
-type gateAdapterUserStreamClient struct {
+type gateAdapterEventStreamClient struct {
 	grpc.ClientStream
 }
 
-func (x *gateAdapterUserStreamClient) Send(m *UserMessageWraper) error {
+func (x *gateAdapterEventStreamClient) Send(m *AsyncMessageWraper) error {
 	return x.ClientStream.SendMsg(m)
 }
 
-func (x *gateAdapterUserStreamClient) Recv() (*UserMessageWraper, error) {
-	m := new(UserMessageWraper)
+func (x *gateAdapterEventStreamClient) Recv() (*AsyncMessageWraper, error) {
+	m := new(AsyncMessageWraper)
 	if err := x.ClientStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -78,8 +78,8 @@ func (x *gateAdapterUserStreamClient) Recv() (*UserMessageWraper, error) {
 // All implementations must embed UnimplementedGateAdapterServer
 // for forward compatibility
 type GateAdapterServer interface {
-	UserMessage(context.Context, *UserMessageWraper) (*SteamClosed, error)
-	UserStream(GateAdapter_UserStreamServer) error
+	UserEvent(context.Context, *AsyncMessageWraper) (*SteamClosed, error)
+	EventStream(GateAdapter_EventStreamServer) error
 	mustEmbedUnimplementedGateAdapterServer()
 }
 
@@ -87,11 +87,11 @@ type GateAdapterServer interface {
 type UnimplementedGateAdapterServer struct {
 }
 
-func (UnimplementedGateAdapterServer) UserMessage(context.Context, *UserMessageWraper) (*SteamClosed, error) {
-	return nil, status.Errorf(codes.Unimplemented, "method UserMessage not implemented")
+func (UnimplementedGateAdapterServer) UserEvent(context.Context, *AsyncMessageWraper) (*SteamClosed, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method UserEvent not implemented")
 }
-func (UnimplementedGateAdapterServer) UserStream(GateAdapter_UserStreamServer) error {
-	return status.Errorf(codes.Unimplemented, "method UserStream not implemented")
+func (UnimplementedGateAdapterServer) EventStream(GateAdapter_EventStreamServer) error {
+	return status.Errorf(codes.Unimplemented, "method EventStream not implemented")
 }
 func (UnimplementedGateAdapterServer) mustEmbedUnimplementedGateAdapterServer() {}
 
@@ -106,44 +106,44 @@ func RegisterGateAdapterServer(s grpc.ServiceRegistrar, srv GateAdapterServer) {
 	s.RegisterService(&GateAdapter_ServiceDesc, srv)
 }
 
-func _GateAdapter_UserMessage_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(UserMessageWraper)
+func _GateAdapter_UserEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(AsyncMessageWraper)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(GateAdapterServer).UserMessage(ctx, in)
+		return srv.(GateAdapterServer).UserEvent(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: "/adapter.GateAdapter/UserMessage",
+		FullMethod: "/adapter.GateAdapter/UserEvent",
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(GateAdapterServer).UserMessage(ctx, req.(*UserMessageWraper))
+		return srv.(GateAdapterServer).UserEvent(ctx, req.(*AsyncMessageWraper))
 	}
 	return interceptor(ctx, in, info, handler)
 }
 
-func _GateAdapter_UserStream_Handler(srv interface{}, stream grpc.ServerStream) error {
-	return srv.(GateAdapterServer).UserStream(&gateAdapterUserStreamServer{stream})
+func _GateAdapter_EventStream_Handler(srv interface{}, stream grpc.ServerStream) error {
+	return srv.(GateAdapterServer).EventStream(&gateAdapterEventStreamServer{stream})
 }
 
-type GateAdapter_UserStreamServer interface {
-	Send(*UserMessageWraper) error
-	Recv() (*UserMessageWraper, error)
+type GateAdapter_EventStreamServer interface {
+	Send(*AsyncMessageWraper) error
+	Recv() (*AsyncMessageWraper, error)
 	grpc.ServerStream
 }
 
-type gateAdapterUserStreamServer struct {
+type gateAdapterEventStreamServer struct {
 	grpc.ServerStream
 }
 
-func (x *gateAdapterUserStreamServer) Send(m *UserMessageWraper) error {
+func (x *gateAdapterEventStreamServer) Send(m *AsyncMessageWraper) error {
 	return x.ServerStream.SendMsg(m)
 }
 
-func (x *gateAdapterUserStreamServer) Recv() (*UserMessageWraper, error) {
-	m := new(UserMessageWraper)
+func (x *gateAdapterEventStreamServer) Recv() (*AsyncMessageWraper, error) {
+	m := new(AsyncMessageWraper)
 	if err := x.ServerStream.RecvMsg(m); err != nil {
 		return nil, err
 	}
@@ -158,17 +158,17 @@ var GateAdapter_ServiceDesc = grpc.ServiceDesc{
 	HandlerType: (*GateAdapterServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "UserMessage",
-			Handler:    _GateAdapter_UserMessage_Handler,
+			MethodName: "UserEvent",
+			Handler:    _GateAdapter_UserEvent_Handler,
 		},
 	},
 	Streams: []grpc.StreamDesc{
 		{
-			StreamName:    "UserStream",
-			Handler:       _GateAdapter_UserStream_Handler,
+			StreamName:    "EventStream",
+			Handler:       _GateAdapter_EventStream_Handler,
 			ServerStreams: true,
 			ClientStreams: true,
 		},
 	},
-	Metadata: "servers/gateway/proto/adapter.proto",
+	Metadata: "adapter.proto",
 }

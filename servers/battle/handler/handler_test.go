@@ -28,11 +28,11 @@ func TestCreateBattle(t *testing.T) {
 	// out := &pb.CreateBattleResponse{}
 	h.CreateBattle(ctx, in)
 }
-func newMessageWarp(msg protobuf.Message) *gatewayproto.UserMessageWraper {
-	ret := &gatewayproto.UserMessageWraper{
-		Gateway: "",
-		MsgName: string(protobuf.MessageName(msg)),
-		UserId:  1,
+func newMessageWarp(msg protobuf.Message) *gatewayproto.AsyncMessageWraper {
+	ret := &gatewayproto.AsyncMessageWraper{
+		// Gateway: "",
+		// MsgName: string(protobuf.MessageName(msg)),
+		UserId: 1,
 	}
 	ret.Body, _ = protobuf.Marshal(msg)
 	return ret
@@ -43,7 +43,7 @@ func TestOnUserMessage(t *testing.T) {
 
 	warper := newMessageWarp(&pb.CreateBattleRequest{})
 
-	h.OnUserMessage(warper)
+	h.OnUserAsyncMessage(warper)
 
 	// md := pb.File_servers_battle_proto_battle_proto.Messages().ByName(protoreflect.Name(warper.Name))
 	// msg := md.Options().ProtoReflect().New()

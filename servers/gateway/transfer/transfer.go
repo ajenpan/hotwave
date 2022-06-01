@@ -10,7 +10,8 @@ import (
 )
 
 type Adpater interface {
-	OnUserMessage(msg *protocol.UserMessageWraper)
+	// OnUserMessage(msg *protocol.UserMessageWraper)
+	OnUserAsyncMessage(msg *protocol.AsyncMessageWraper)
 }
 
 func NewTransfer() *Transfer {
@@ -34,7 +35,7 @@ type Transfer struct {
 	adapter    Adpater
 }
 
-func (t *Transfer) UserMessage(ctx context.Context, in *protocol.UserMessageWraper) (*protocol.SteamClosed, error) {
-	t.adapter.OnUserMessage(in)
+func (t *Transfer) OnUserAsyncMessage(ctx context.Context, in *protocol.AsyncMessageWraper) (*protocol.SteamClosed, error) {
+	t.adapter.OnUserAsyncMessage(in)
 	return nil, nil
 }

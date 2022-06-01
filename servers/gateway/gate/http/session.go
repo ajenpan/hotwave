@@ -1,18 +1,17 @@
 package websocket
 
 import (
+	"fmt"
 	"net/http"
 	"net/textproto"
 	"strings"
 	"sync"
 
-	"github.com/gorilla/websocket"
+	protobuf "google.golang.org/protobuf/proto"
 
 	"hotwave/servers/gateway/gate"
-	"hotwave/servers/gateway/gate/codec"
+	"hotwave/servers/gateway/proto"
 )
-
-var upgrader = websocket.Upgrader{} // use default options
 
 func NewSession(rw http.ResponseWriter, r *http.Request) *httpSession {
 	id := gate.NewSessionID("http")
@@ -42,6 +41,9 @@ type httpSession struct {
 	r        *http.Request
 	meta     map[string]interface{}
 	metaLock sync.RWMutex
+
+	respMsgLock sync.Mutex
+	respMsg     *proto.ClientMessageWraper
 }
 
 func (s *httpSession) ID() string {
@@ -49,6 +51,10 @@ func (s *httpSession) ID() string {
 }
 
 func (s *httpSession) UID() uint64 {
+	raw, has := s.GetMeta("uid")
+	if has {
+		return raw.(uint64)
+	}
 	return 0
 }
 
@@ -69,10 +75,16 @@ func (s *httpSession) GetMeta(k string) (interface{}, bool) {
 	return v, ok
 }
 
-func (s *httpSession) Send(*codec.AsyncMessage) error {
-	return nil
+func (s *httpSession) Send(resp protobuf.Message) error {
+	s.respMsgLock.Lock()
+	defer s.respMsgLock.Unlock()
+	if s.respMsg == nil {
+		// s.respMsg = resp
+		return nil
+	}
+	return fmt.Errorf("session already has respMsg")
 }
 
 func (s *httpSession) Close() {
-
+	//do nothing here
 }

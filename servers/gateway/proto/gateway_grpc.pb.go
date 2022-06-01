@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.2.0
 // - protoc             v3.19.4
-// source: servers/gateway/proto/gateway.proto
+// source: gateway.proto
 
 package proto
 
@@ -23,6 +23,7 @@ const _ = grpc.SupportPackageIsVersion7
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type GatewayClient interface {
 	SendMessageToUse(ctx context.Context, in *SendMessageToUserRequest, opts ...grpc.CallOption) (*SendMessageToUserResponse, error)
+	ProxyServer(ctx context.Context, in *ProxyServerRequest, opts ...grpc.CallOption) (*ProxyServerResponse, error)
 }
 
 type gatewayClient struct {
@@ -42,11 +43,21 @@ func (c *gatewayClient) SendMessageToUse(ctx context.Context, in *SendMessageToU
 	return out, nil
 }
 
+func (c *gatewayClient) ProxyServer(ctx context.Context, in *ProxyServerRequest, opts ...grpc.CallOption) (*ProxyServerResponse, error) {
+	out := new(ProxyServerResponse)
+	err := c.cc.Invoke(ctx, "/gateway.Gateway/ProxyServer", in, out, opts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // GatewayServer is the server API for Gateway service.
 // All implementations must embed UnimplementedGatewayServer
 // for forward compatibility
 type GatewayServer interface {
 	SendMessageToUse(context.Context, *SendMessageToUserRequest) (*SendMessageToUserResponse, error)
+	ProxyServer(context.Context, *ProxyServerRequest) (*ProxyServerResponse, error)
 	mustEmbedUnimplementedGatewayServer()
 }
 
@@ -56,6 +67,9 @@ type UnimplementedGatewayServer struct {
 
 func (UnimplementedGatewayServer) SendMessageToUse(context.Context, *SendMessageToUserRequest) (*SendMessageToUserResponse, error) {
 	return nil, status.Errorf(codes.Unimplemented, "method SendMessageToUse not implemented")
+}
+func (UnimplementedGatewayServer) ProxyServer(context.Context, *ProxyServerRequest) (*ProxyServerResponse, error) {
+	return nil, status.Errorf(codes.Unimplemented, "method ProxyServer not implemented")
 }
 func (UnimplementedGatewayServer) mustEmbedUnimplementedGatewayServer() {}
 
@@ -88,6 +102,24 @@ func _Gateway_SendMessageToUse_Handler(srv interface{}, ctx context.Context, dec
 	return interceptor(ctx, in, info, handler)
 }
 
+func _Gateway_ProxyServer_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(ProxyServerRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(GatewayServer).ProxyServer(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: "/gateway.Gateway/ProxyServer",
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(GatewayServer).ProxyServer(ctx, req.(*ProxyServerRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // Gateway_ServiceDesc is the grpc.ServiceDesc for Gateway service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -99,7 +131,11 @@ var Gateway_ServiceDesc = grpc.ServiceDesc{
 			MethodName: "SendMessageToUse",
 			Handler:    _Gateway_SendMessageToUse_Handler,
 		},
+		{
+			MethodName: "ProxyServer",
+			Handler:    _Gateway_ProxyServer_Handler,
+		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "servers/gateway/proto/gateway.proto",
+	Metadata: "gateway.proto",
 }

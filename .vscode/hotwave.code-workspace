@@ -4,10 +4,17 @@
 			"path": ".."
 		}
 	],
-	"settings": {},
+	"settings": {
+		"protoc": {
+			"options": [
+				"--proto_path=./tools/protoc/include/",
+				"--proto_path=./tools/protoc/include/google/protobuf/",
+			]
+		}
+	},
 	"extensions": {
 		"recommendations": [
 			"golang.go"
-		]		
+		]
 	}
 }

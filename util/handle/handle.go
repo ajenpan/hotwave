@@ -3,6 +3,7 @@ package handle
 import (
 	"encoding/json"
 	"fmt"
+	"hotwave/logger"
 	"io/ioutil"
 	"net/http"
 	"reflect"
@@ -34,7 +35,7 @@ func ServerGRPCMethodForHttp(handler interface{}, ct *CallTable) func(w http.Res
 		}
 
 		path := r.URL.Path
-		path = strings.TrimPrefix(path, "/")
+		path = strings.Trim(path, "/")
 		if len(path) <= 1 {
 			respWithError(nil, fmt.Errorf("method can not be: %s", path))
 			return
@@ -63,14 +64,19 @@ func ServerGRPCMethodForHttp(handler interface{}, ct *CallTable) func(w http.Res
 
 		if len(respArgs) != 2 {
 			//TODO:
+			logger.Warn("method %s return %d args", path, len(respArgs))
 			return
 		}
 
-		respErr := respArgs[1].Interface().(error)
+		var respErr error
+		if !respArgs[1].IsNil() {
+			respErr = respArgs[1].Interface().(error)
+		}
+
 		var respData json.RawMessage
 
-		if resp, ok := respArgs[0].Interface().(protobuf.Message); ok {
-			if resp != nil {
+		if !respArgs[0].IsNil() {
+			if resp, ok := respArgs[0].Interface().(protobuf.Message); ok {
 				if data, err := protojson.Marshal(resp); err == nil {
 					respData = data
 				} else {
@@ -78,6 +84,7 @@ func ServerGRPCMethodForHttp(handler interface{}, ct *CallTable) func(w http.Res
 				}
 			}
 		}
+
 		respWithError(respData, respErr)
 	}
 }

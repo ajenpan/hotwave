@@ -31,6 +31,10 @@ func New(opts ...Option) *Frame {
 		options.NodeId = uuid.Must(uuid.NewUUID()).String()
 	}
 
+	if options.Registry == nil {
+		options.Registry = registry.DefaultRegistry
+	}
+
 	ret.opts = options
 
 	ret.grpcServer = grpc.NewServer()
@@ -58,6 +62,9 @@ func (f *Frame) RegisterService(desc *grpc.ServiceDesc, impl interface{}) {
 	f.grpcServer.RegisterService(desc, impl)
 }
 
+func (f *Frame) GrpcServer() *grpc.Server {
+	return f.grpcServer
+}
 func (f *Frame) Start() error {
 	f.RLock()
 	if f.started {
@@ -112,6 +119,38 @@ func (f *Frame) Start() error {
 	f.Lock()
 	f.started = true
 	f.Unlock()
+
+	go func() {
+		//report protobuf descriptor to gateway?
+		const gatewayName = "gateway"
+		myname := config.Name
+		if strings.ToLower(myname) == gatewayName {
+			return
+		}
+
+		watch, err := config.Registry.Watch()
+		if err != nil {
+			return
+		}
+		defer watch.Stop()
+		for {
+			res, err := watch.Next()
+			if err != nil {
+				logger.Error(err)
+				break
+			}
+
+			if res.Service.Name != gatewayName || res.Action != registry.Create.String() {
+				continue
+			}
+			node := res.Service.Nodes[0]
+			if len(node.Id) <= 2 {
+				continue
+			}
+
+			// fmt.Println(node.Id)
+		}
+	}()
 	return nil
 }
 
@@ -154,6 +193,11 @@ func (f *Frame) keepRegistered() {
 
 	func() {
 		var err error
+		defer func() {
+			if err != nil {
+				logger.Errorf("register service error: %v", err)
+			}
+		}()
 
 		for {
 			select {
@@ -266,7 +310,7 @@ func (f *Frame) register() error {
 
 	// register service
 	node := &registry.Node{
-		Id:       config.Name + "." + config.NodeId,
+		Id:       config.Name + "-" + config.NodeId,
 		Address:  addr,
 		Metadata: metadata.Copy(config.Metadata),
 	}
@@ -340,7 +384,7 @@ func (f *Frame) deregister() error {
 	}
 
 	node := &registry.Node{
-		Id:      config.Name + "." + config.NodeId,
+		Id:      config.Name + "-" + config.NodeId,
 		Address: addr,
 	}
 

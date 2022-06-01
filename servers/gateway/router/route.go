@@ -177,21 +177,6 @@ func (r *Router) store(rs *registry.Service) {
 	}
 }
 
-func (r *Router) ProbeNode(rs *registry.Service) *Node {
-	// if len(rs.Nodes) == 0 {
-	// 	return nil
-	// }
-	// node := rs.Nodes[0]
-
-	// c, err := grpc.Dial(node.Address, grpc.WithTransportCredentials(insecure.NewCredentials()))
-	// if err != nil {
-	// 	log.Error(err)
-	// 	return nil
-	// }
-
-	return nil
-}
-
 func warpRegService(service *registry.Service) *Service {
 	return &Service{
 		Name:     service.Name,

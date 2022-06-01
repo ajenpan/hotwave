@@ -9,7 +9,8 @@ import (
 
 	frame "hotwave"
 	"hotwave/logger"
-	"hotwave/servers/gateway/gate/tcp"
+	httpgate "hotwave/servers/gateway/gate/http"
+	tcpgate "hotwave/servers/gateway/gate/tcp"
 	"hotwave/servers/gateway/handler"
 	"hotwave/servers/gateway/proto"
 	utilSignal "hotwave/util/signal"
@@ -52,7 +53,16 @@ func RealMain() error {
 		}
 		defer core.Stop()
 
-		tcpListener := tcp.NewServer(&tcp.ServerOptions{
+		httpListener := httpgate.NewServer(httpgate.Options{
+			Address: ":10087",
+			Adapter: gate,
+		})
+		if err := httpListener.Start(); err != nil {
+			panic(err)
+		}
+		defer httpListener.Stop()
+
+		tcpListener := tcpgate.NewServer(&tcpgate.ServerOptions{
 			Adapter:          gate,
 			HeatbeatInterval: time.Second * 20,
 			Address:          ":10086",

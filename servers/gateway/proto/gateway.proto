@@ -4,8 +4,11 @@ package gateway;
 
 option go_package = "./servers/gateway/proto;proto";
 
+import "google/protobuf/descriptor.proto";
+
 service Gateway {
   rpc SendMessageToUse(SendMessageToUserRequest) returns (SendMessageToUserResponse) {}
+  rpc ProxyServer(ProxyServerRequest) returns (ProxyServerResponse) {}
 }
 
 message SendMessageToUserRequest {
@@ -14,3 +17,13 @@ message SendMessageToUserRequest {
 }
 
 message SendMessageToUserResponse {}
+
+message ProxyServerRequest {
+  string nodeid = 1;
+  string server_name = 2;
+  string version = 3;
+  google.protobuf.FileDescriptorSet files = 4;
+
+}
+
+message ProxyServerResponse {}

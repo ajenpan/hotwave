@@ -19,7 +19,7 @@ import (
 )
 
 func New(c *config.Config) (*Handler, error) {
-	udb, err := database.CreateMysqlClient(config.DefaultConf.UserDBDSN)
+	udb, err := database.CreateMysqlClient(c.UserDBDSN)
 	if err != nil {
 		return nil, err
 	}
@@ -38,14 +38,14 @@ type Handler struct {
 	conf      *config.Config
 }
 
-func generateToken(u *models.User) *jwt.Token {
+func generateToken(u *models.Users) *jwt.Token {
 	// Id: strconv.FormatInt(u.Id, 10)
 
 	//TODO:
 	claims := &jwt.RegisteredClaims{
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(12 * time.Hour)),
 		ID:        uuid.NewString(),
-		Audience:  []string{u.Name},
+		Audience:  []string{u.Uname},
 		NotBefore: jwt.NewNumericDate(time.Now()),
 		Issuer:    "AccountServer",
 		Subject:   "assess",
@@ -93,11 +93,9 @@ func generateToken(u *models.User) *jwt.Token {
 // 		token, err := jwt.ParseWithClaims(tokenRaw, claims, func(t *jwt.Token) (interface{}, error) {
 // 			return "", nil
 // 		})
-
 // 		if err != nil || !token.Valid {
 // 			return fmt.Errorf("StatusUnauthorized")
 // 		}
-
 // 		// user, _ := cache.FetchUser(claims.Id)
 // 		// if user == nil {
 // 		// 	user, err = TokenLogin(token)
@@ -154,7 +152,6 @@ func (*Handler) Captcha(ctx context.Context, in *proto.CaptchaRequest) (*proto.C
 var jwtKey = []byte("my_secret_key")
 
 func (h *Handler) LoginWithPasswd(ctx context.Context, in *proto.LoginWithPasswdRequest) (*proto.LoginWithPasswdResponse, error) {
-
 	if len(in.Account) < 4 {
 		return nil, fmt.Errorf("please input right account")
 	}
@@ -168,11 +165,11 @@ func (h *Handler) LoginWithPasswd(ctx context.Context, in *proto.LoginWithPasswd
 	// return nil
 	// }
 
-	user := &models.User{
-		Name: in.Account,
+	user := &models.Users{
+		Uname: in.Account,
 	}
 
-	res := h.userDB.Debug().Limit(1).Find(user)
+	res := h.userDB.Debug().Limit(1).Find(user, user)
 
 	if err := res.Error; err != nil {
 		log.Error(err)
@@ -213,8 +210,8 @@ func (h *Handler) LoginWithPasswd(ctx context.Context, in *proto.LoginWithPasswd
 	}
 
 	out.UserInfo = &proto.UserInfo{
-		Userid:   user.Id,
-		Username: user.Name,
+		Userid:   user.UID,
+		Username: user.Uname,
 		Stat:     int32(user.Stat),
 		Created:  user.CreateAt.Unix(),
 	}
@@ -226,7 +223,6 @@ func (h *Handler) LoginWithPasswd(ctx context.Context, in *proto.LoginWithPasswd
 }
 
 func (*Handler) Logout(ctx context.Context, in *proto.LogoutRequest) (*proto.LogoutResponse, error) {
-
 	return nil, nil
 }
 
@@ -250,8 +246,8 @@ func (h *Handler) UserInfo(ctx context.Context, in *proto.UserInfoRequest) (*pro
 	out := &proto.UserInfoResponse{}
 
 	out.Info = &proto.UserInfo{
-		Userid:   user.User.Id,
-		Username: user.User.Name,
+		Userid:   user.User.UID,
+		Username: user.User.Uname,
 		Stat:     int32(user.User.Stat),
 		Created:  user.User.CreateAt.Unix(),
 	}

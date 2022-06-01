@@ -8,9 +8,10 @@ import (
 	"io"
 	"strings"
 
-	"hotwave/codec"
+	// "github.com/golang/protobuf/proto"
+	"google.golang.org/protobuf/proto"
 
-	"github.com/golang/protobuf/proto"
+	"hotwave/codec"
 )
 
 type Codec struct {
@@ -36,7 +37,7 @@ func (c *Codec) ReadHeader(m *codec.Message, t codec.MessageType) error {
 		// [ , a.package.Foo, Bar]
 		parts := strings.Split(path, "/")
 		if len(parts) != 3 {
-			return errors.New("Unknown request path")
+			return errors.New("unknown request path")
 		}
 		service := strings.Split(parts[1], ".")
 		m.Endpoint = strings.Join([]string{service[len(service)-1], parts[2]}, ".")
@@ -64,7 +65,7 @@ func (c *Codec) ReadBody(b interface{}) error {
 		return proto.Unmarshal(buf, b.(proto.Message))
 	}
 
-	return errors.New("Unsupported Content-Type")
+	return errors.New("unsupported Content-Type")
 }
 
 func (c *Codec) Write(m *codec.Message, b interface{}) error {
@@ -94,7 +95,7 @@ func (c *Codec) Write(m *codec.Message, b interface{}) error {
 		m.Header["content-type"] = c.ContentType
 		m.Header[":status"] = "200"
 		m.Header["grpc-status"] = "0"
-		//		m.Header["grpc-message"] = ""
+		// m.Header["grpc-message"] = ""
 	case codec.Error:
 		m.Header["Trailer"] = "grpc-status, grpc-message"
 		// micro end of stream
@@ -118,7 +119,7 @@ func (c *Codec) Write(m *codec.Message, b interface{}) error {
 			buf, err = proto.Marshal(pb)
 		}
 	default:
-		err = errors.New("Unsupported Content-Type")
+		err = errors.New("unsupported Content-Type")
 	}
 	// check error
 	if err != nil {
