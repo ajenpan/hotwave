@@ -1,0 +1,102 @@
+syntax = "proto3";
+
+package auth;
+
+option go_package = "services/auth/proto;proto";
+
+service Auth {
+  rpc Captcha(CaptchaRequest) returns (CaptchaResponse) {}
+  rpc LoginWithPasswd(LoginWithPasswdRequest) returns (LoginWithPasswdResponse) {}
+  rpc Logout(LogoutRequest) returns (LogoutResponse) {}
+  rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse) {}
+  rpc UserInfo(UserInfoRequest) returns (UserInfoResponse) {}
+}
+
+message CaptchaRequest {
+  //TODO: 
+  string captcha_type = 1;
+}
+
+message CaptchaResponse {
+  string captcha_id = 1;
+  string base64_captcha = 2;
+}
+
+message CaptchaVerify {
+  string captcha_id = 1;
+  string answer = 2;
+}
+
+message Token {
+  // The token to be used for accessing resources
+  string assess_token = 1;
+  string refresh_token = 2;
+
+  // Time of token creation
+  int64 issued_at = 3;
+
+  // Time of token expiry
+  int64 expires_at = 4;
+}
+
+message UserInfo {
+  int64 userid = 1;
+  string username = 2;
+  int32 stat = 3;
+  int64 created = 4;
+  string nickname = 5;
+}
+
+message LoginWithPasswdRequest {
+  string account = 1;
+  string password = 2;
+
+  CaptchaVerify captcha_verify = 3;
+}
+
+message LoginWithPasswdResponse {
+  Token token = 1;
+  UserInfo user_info = 3;
+}
+
+message LogoutRequest {}
+
+message LogoutResponse {
+  string msg = 1;
+}
+
+message RefreshTokenRequest {
+  string access_token = 1;
+  string refresh_token = 2;
+}
+message RefreshTokenResponse {
+  Token token = 1;
+}
+
+message RegisterAccountRequest {
+  string account =1; 
+  string password = 2;
+  string nickname = 3;
+
+  // string captcha_id = 4;
+  // string captcha_answer = 5;
+}
+message RegisterAccountResponse {
+
+}
+
+// verify
+message UserInfoRequest {
+  string access_token = 1;
+}
+message UserInfoResponse {
+  UserInfo info = 1;
+}
+
+// change user's passwd
+message UpdatePasswdRequest {}
+message UpdatePasswdResponse {}
+
+// reset user's passwd if forgot
+message ResetPasswdRequest {}
+message ResetPasswdResponse {}
