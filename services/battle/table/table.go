@@ -8,6 +8,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/protobuf/proto"
 
+	log "hotwave/logger"
 	"hotwave/services/battle"
 	pb "hotwave/services/battle/proto"
 )
@@ -21,7 +22,6 @@ func NewTable(c *pb.BattleConfigure) *Table {
 	ret.action = make(chan func(), 100)
 
 	// runtime.SetFinalizer(ret, func(d *Desk) {
-
 	// })
 
 	return ret
@@ -63,6 +63,7 @@ func (d *Table) Start(l battle.GameLogic) error {
 	}
 
 	d.ticker = time.NewTicker(1 * time.Second)
+
 	go func() {
 		latest := time.Now()
 		for range d.ticker.C {
@@ -90,17 +91,19 @@ func (d *Table) Close() {
 }
 
 func (d *Table) SendMessage(p battle.Player, msg proto.Message) {
-
+	err := p.SendMessage(msg)
+	if err != nil {
+		log.Error(err)
+	}
 }
 
 func (d *Table) OnWatcherJoin() {
 	d.action <- func() {
-
+		//todo:
 	}
 }
 
 func (d *Table) BroadcastMessage(msg proto.Message) {
-
 	d.players.Range(func(key, value interface{}) bool {
 		if p, ok := value.(*player); ok && p != nil {
 			d.SendMessage(p, msg)
@@ -110,7 +113,7 @@ func (d *Table) BroadcastMessage(msg proto.Message) {
 }
 
 func (d *Table) EmitEvent(event proto.Message) {
-
+	//TODO:
 }
 
 func (d *Table) ReportGameStart() {
@@ -123,7 +126,9 @@ func (d *Table) ReportGameOver() {
 	d.StartAt = time.Now()
 }
 
-func (d *Table) JoinPlayer() {}
+func (d *Table) PlayerJoin() {
+
+}
 
 func (d *Table) getPlayer(uid int64) *player {
 	if p, has := d.players.Load(uid); has {
@@ -134,7 +139,6 @@ func (d *Table) getPlayer(uid int64) *player {
 
 func (d *Table) OnBattleMessage(ctx context.Context, msg *pb.BattleMessageWrap) {
 	d.action <- func() {
-		//TODO: in a channle
 		p := d.getPlayer(msg.Uid)
 		if p != nil && d.logic != nil {
 			d.logic.OnMessage(p, msg.Topic, msg.Data)

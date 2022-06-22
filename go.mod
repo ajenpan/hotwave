@@ -3,13 +3,14 @@ module hotwave
 go 1.18
 
 require (
+	github.com/Ajenpan/chinese_poker_go v0.0.0-20200304061007-df3fe5b022ec
 	github.com/golang-jwt/jwt/v4 v4.4.1
 	github.com/google/uuid v1.3.0
 	github.com/miekg/dns v1.1.47
+	github.com/sirupsen/logrus v1.8.1
 	github.com/urfave/cli/v2 v2.4.0
 	golang.org/x/net v0.0.0-20220325170049-de3da57026de
 	google.golang.org/grpc v1.45.0
-	google.golang.org/grpc/cmd/protoc-gen-go-grpc v1.2.0
 	google.golang.org/protobuf v1.28.0
 	gorm.io/driver/mysql v1.3.2
 	gorm.io/gorm v1.23.2

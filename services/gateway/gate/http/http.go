@@ -6,7 +6,8 @@ import (
 	"net"
 	"net/http"
 
-	codecjson "hotwave/codec/json"
+	"google.golang.org/protobuf/encoding/protojson"
+
 	"hotwave/logger"
 	"hotwave/services/gateway/proto"
 )
@@ -89,7 +90,8 @@ func (s *Server) ServeHTTP(rw http.ResponseWriter, r *http.Request) {
 	}
 
 	if resp != nil {
-		raw, err := codecjson.Marshaler{}.Marshal(resp)
+		raw, err := protojson.MarshalOptions{}.Marshal(resp)
+		// raw, err := marshal.JSONPb{}.Marshal(resp)
 		if err != nil {
 			respWrap.Code = -1
 			respWrap.Message = err.Error()

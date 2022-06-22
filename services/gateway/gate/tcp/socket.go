@@ -257,8 +257,11 @@ func (a *Socket) writePacket(p *Packet) error {
 		return fmt.Errorf("writePacket failed, the socket is disconnected")
 	}
 	var err error
+	p.RawLen = int32(len(p.Raw))
 
-	head := p.PacketHead.Encode()
+	head := make([]byte, p.HeadLen())
+
+	p.PacketHead.Encode(head)
 	_, err = writeAll(a.conn, head)
 	if err != nil {
 		return err

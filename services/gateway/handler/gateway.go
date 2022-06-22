@@ -7,30 +7,18 @@ import (
 	"strings"
 	"sync"
 
-	"google.golang.org/grpc"
 	protobuf "google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
 
-	frame "hotwave"
 	"hotwave/logger"
-	"hotwave/registry"
 	"hotwave/services/gateway/gate"
 	protocol "hotwave/services/gateway/proto"
 	"hotwave/services/gateway/protostore"
-	"hotwave/services/gateway/router"
-	utlhandle "hotwave/util/handle"
+	utlhandle "hotwave/transport"
 )
 
-func NewGater(frame *frame.Frame) *Gater {
-	router := router.New(frame.Options().Registry)
-
-	if err := router.Start(); err != nil {
-		return nil
-	}
-
+func NewGater() *Gater {
 	g := &Gater{
-		frame:      frame,
-		router:     router,
 		protoStore: protostore.NewMomoryStore(),
 	}
 
@@ -48,103 +36,15 @@ func NewGater(frame *frame.Frame) *Gater {
 		g.allowList.Store(v, true)
 	}
 
-	w, err := frame.Options().Registry.Watch()
-	if err != nil {
-		return nil
-	}
-
-	go func() {
-		for {
-			res, err := w.Next()
-			if err != nil {
-				logger.Error(err)
-				return
-			}
-			g.onNodeWatch(res)
-		}
-	}()
-
 	return g
 }
 
 type Gater struct {
-	// protocol.UnimplementedGatewayServer
-	// proto.UnimplementedGateServer
-	// proto.UnimplementedGateAdapterServer
-
-	user2session sync.Map //map[uint64]*gate.Session
-
-	tclientLock sync.RWMutex
-	// tclient     map[string]protocol.GateAdapterClient
-
-	router *router.Router
-	frame  *frame.Frame
-
-	allowList sync.Map
-
+	user2session  sync.Map //map[uint64]*gate.Session
+	tclientLock   sync.RWMutex
+	allowList     sync.Map
 	gateCallTable *utlhandle.CallTable
-
-	protoStore *protostore.MomoryStore
-}
-
-func (g *Gater) onNodeWatch(res *registry.Result) {
-	// switch res.Action {
-	// case registry.Create.String():
-	// 	fallthrough
-	// case registry.Update.String():
-	// 	if res.Service.Name == "gateway" {
-	// 		return
-	// 	}
-	// 	if res.Service == nil || len(res.Service.Nodes) == 0 {
-	// 		return
-	// 	}
-	// 	node := res.Service.Nodes[0]
-	// 	if len(node.Id) <= 2 {
-	// 		return
-	// 	}
-
-	// 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-	// 	defer cancel()
-
-	// 	conn, err := grpc.DialContext(ctx, node.Address, grpc.WithTransportCredentials(insecure.NewCredentials()), grpc.WithBlock())
-	// 	if err != nil {
-	// 		logger.Error(err)
-	// 		return
-	// 	}
-
-	// 	client := grpc_reflection_v1alpha.NewServerReflectionClient(conn)
-	// 	steam, err := client.ServerReflectionInfo(context.Background())
-	// 	if err != nil {
-	// 		logger.Error(err)
-	// 		return
-	// 	}
-	// 	defer steam.CloseSend()
-
-	// 	if err := steam.Send(&grpc_reflection_v1alpha.ServerReflectionRequest{
-	// 		MessageRequest: &grpc_reflection_v1alpha.ServerReflectionRequest_FileContainingSymbol{
-	// 			FileContainingSymbol: res.Service.Name,
-	// 		},
-	// 	}); err != nil {
-	// 		logger.Error(err)
-	// 		return
-	// 	}
-
-	// 	resp, err := steam.Recv()
-	// 	if err != nil {
-	// 		logger.Error(err)
-	// 	}
-
-	// 	fmt.Println(resp)
-	// }
-	logger.Infof("onWatch: %s %s", res.Action, res.Service.Name)
-}
-
-func (g *Gater) GetGrpcConn(node *router.Node) *grpc.ClientConn {
-	conn, err := grpc.Dial(node.Address)
-	if err != nil {
-		return nil
-	}
-	return conn
+	protoStore    *protostore.MomoryStore
 }
 
 // func (g *Gater) GetGateAdapterClient(node *router.Node) protocol.GateAdapterClient {
@@ -176,28 +76,6 @@ func (g *Gater) GetGrpcConn(node *router.Node) *grpc.ClientConn {
 func (g *Gater) SendSessionErrorAndClose(session gate.Session, err error) {
 	logger.Error(err)
 	session.Close()
-}
-
-func (g *Gater) GetNode(nodeId string, servername string) *router.Node {
-	var ret *router.Node
-	if nodeId != "" {
-		ret = g.router.GetNode(nodeId)
-	}
-	if ret == nil {
-		svrs, err := g.router.GetService(servername)
-		if err != nil {
-			logger.Error(err)
-			return nil
-		}
-		//select ret
-		if len(svrs) == 0 {
-			logger.Error("GetService name %s, is empty", servername)
-			return nil
-		}
-		// simple random
-		// return svr.Nodes[0]
-	}
-	return ret
 }
 
 func (g *Gater) OnGateMethod(ctx context.Context, msg *protocol.ClientMessageWraper) (*protocol.ClientMessageWraper, error) {
@@ -409,20 +287,4 @@ func (g *Gater) Echo(ctx context.Context, in *protocol.EchoRequest) (*protocol.E
 		Data: in.Data,
 	}
 	return out, nil
-}
-
-func (g *Gater) ProxyServer(ctx context.Context, in *protocol.ProxyServerRequest) (*protocol.ProxyServerResponse, error) {
-	node := g.router.GetNode(in.Nodeid)
-	if node == nil {
-		return nil, fmt.Errorf("node %s not found", in.Nodeid)
-	}
-	if len(in.ServerName) == 0 || len(in.Version) == 0 {
-		return nil, fmt.Errorf("server name or version is empty")
-	}
-	key := fmt.Sprintf("%s-%s", in.ServerName, in.Version)
-	err := g.protoStore.StoreProtoFiles(key, in.Files)
-	if err != nil {
-		return nil, err
-	}
-	return &protocol.ProxyServerResponse{}, nil
 }

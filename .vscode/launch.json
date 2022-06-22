@@ -12,18 +12,22 @@
             "program": "${file}"
         },
         {
-            "name": "Launch gateway",
+            "name": "Launch battle",
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceRoot}/servers/gateway/cmd",
+            "program": "${workspaceRoot}/apps/battle",
         },
         {
-            "name": "Launch account",
+            "name": "Launch tcpclient",
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceRoot}/servers/account/cmd",
+            "program": "${workspaceRoot}/apps/tcpclient",
+            "args": [
+                "localhost",
+                "10010"
+            ]
         }
     ]
 }

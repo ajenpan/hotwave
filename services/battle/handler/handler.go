@@ -5,28 +5,34 @@ import (
 	"fmt"
 	"sync"
 
+	protobuf "google.golang.org/protobuf/proto"
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 
 	// "github.com/google/uuid"
-	"hotwave/logger"
+	logger "hotwave/logger"
+	"hotwave/marshal"
 	"hotwave/services/battle"
 	"hotwave/services/battle/proto"
 	"hotwave/services/battle/table"
 	gateproto "hotwave/services/gateway/proto"
+	utilHandler "hotwave/transport"
 )
 
 type Handler struct {
-	// proto.UnimplementedBattleServer
-	// gateproto.UnimplementedGateAdapterServer
-
 	desks        sync.Map
 	LogicCreator *battle.GameLogicCreator
+
+	ct        *utilHandler.CallTable
+	marshaler *marshal.ProtoMarshaler
 }
 
 func New() *Handler {
-	return &Handler{
+	h := &Handler{
 		LogicCreator: &battle.GameLogicCreator{},
+		marshaler:    &marshal.ProtoMarshaler{},
 	}
+	h.ct = utilHandler.ExtractAsyncMethod("battle", proto.File_servers_battle_proto_battle_proto.Messages(), h)
+	return h
 }
 
 func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleRequest) (*proto.CreateBattleResponse, error) {
@@ -34,16 +40,10 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleReques
 	// first get game logic
 	// var creator battle.GameLogicCreator
 
-	// if c, ok := h.LoigcCreators.Load(in.GameName); !ok {
-	// 	return fmt.Errorf("not found game by name:%s", in.GameName)
-	// } else {
-	// 	creator, ok = c.(battle.GameLogicCreator)
-	// 	if !ok {
-	// 		return fmt.Errorf("")
-	// 	}
-	// }
-	logic, err := h.LogicCreator.CreateLogic(in.GameName, "")
-	//get from pool?
+	logic, err := h.LogicCreator.CreateLogic(in.GameName, in.GameConf)
+	if err != nil {
+		return nil, err
+	}
 
 	if err != nil {
 		return out, err
@@ -64,6 +64,7 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleReques
 func (h *Handler) PlyaerJoinBattle(ctx context.Context, in *proto.EmptyMessage) (*proto.EmptyMessage, error) {
 	return &proto.EmptyMessage{}, nil
 }
+
 func (h *Handler) WatcherJoinBattle(ctx context.Context, in *proto.WatcherJoinBattleRequest) (*proto.WatcherJoinBattleResponse, error) {
 	out := &proto.WatcherJoinBattleResponse{}
 	d := h.getDesk(in.BattleId)
@@ -85,18 +86,35 @@ func (h *Handler) OnUserAsyncMessage(msg *gateproto.AsyncMessageWraper) {
 	// proto.File_servers_battle_proto_battle_proto.Messages().ByName(protoreflect.Name(msg.Name)).new
 }
 
-func (h *Handler) UserMessage(ctx context.Context, in *gateproto.AsyncMessageWraper) (*gateproto.SteamClosed, error) {
-	logger.Info("UserMessage", in.UserId, in.Topic)
-	return &gateproto.SteamClosed{}, nil
+func (h *Handler) OnMessage(ctx context.Context, msgname string, msg protobuf.Message) {
+
+}
+
+func (h *Handler) OnEvent(topc string, msg protobuf.Message) {
+
+}
+
+func (h *Handler) OnUserConnStat() {
+
+}
+
+func (h *Handler) OnUserMessage(uid int64, topic string, raw []byte) {
+	logger.Info("UserMessage", uid, topic)
+
+	method := h.ct.Get(topic)
+	if method == nil {
+		return
+	}
+
+	// method.Call()
 }
 
 func (h *Handler) OnBattleMessage(ctx context.Context, in *proto.BattleMessageWrap) {
 	d := h.getDesk(in.BattleId)
 	if d == nil {
-		// fmt.Errorf("desk not found battleid")
+		logger.Error("desk not found battleid")
 		return
 	}
-
 	d.OnBattleMessage(ctx, in)
 }
 
@@ -107,19 +125,15 @@ func (h *Handler) OnBattleMessage(ctx context.Context, in *proto.BattleMessageWr
 // 		if err == io.EOF {
 // 			break
 // 		}
-
 // 		if err != nil {
 // 			return err
 // 		}
-
 // 		d := h.getDesk(in.BattleId)
 // 		if d == nil {
 // 			return fmt.Errorf("desk not found battleid")
 // 		}
-
 // 		d.OnBattleMessage(ctx, in)
 // 	}
-
 // 	return nil
 // }
 

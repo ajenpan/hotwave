@@ -34,11 +34,11 @@ func (info *AppInfo) ShortVersion() string {
 
 func (info *AppInfo) LongVersion() string {
 	buf := bytes.NewBuffer(nil)
-	fmt.Println(buf, "project:", info.Name)
-	fmt.Println(buf, "version:", info.Version)
-	fmt.Println(buf, "git commit:", info.GitCommit)
-	fmt.Println(buf, "build at:", info.BuildAt)
-	fmt.Println(buf, "build by:", info.BuildBy)
-	fmt.Fprintln(buf, "Running OS/Arch:", info.RunnningOS)
+	fmt.Fprintln(buf, "project:", info.Name)
+	fmt.Fprintln(buf, "version:", info.Version)
+	fmt.Fprintln(buf, "git commit:", info.GitCommit)
+	fmt.Fprintln(buf, "build at:", info.BuildAt)
+	fmt.Fprintln(buf, "build by:", info.BuildBy)
+	fmt.Fprintln(buf, "running OS/Arch:", info.RunnningOS)
 	return buf.String()
 }

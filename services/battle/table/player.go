@@ -3,15 +3,12 @@ package table
 import (
 	protobuf "google.golang.org/protobuf/proto"
 
-	"hotwave/services/battle"
 	pb "hotwave/services/battle/proto"
-	// "hotwave/user"
 )
 
 type player struct {
 	*pb.PlayerInfo
-	// user.User
-	desk *Table
+	// table *Table
 }
 
 // func NewPlayer(u user.User) battle.Player {
@@ -28,8 +25,8 @@ func (p *player) GetUserID() int64 {
 	return p.Uid
 }
 
-func (p *player) GetSeatID() battle.SeatID {
-	return battle.SeatID(p.SeatId)
+func (p *player) GetSeatID() int32 {
+	return p.SeatId
 }
 
 func (p *player) IsRobot() bool {

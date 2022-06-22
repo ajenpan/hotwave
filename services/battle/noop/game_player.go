@@ -1,14 +1,16 @@
 package noop
 
-import "hotwave/services/battle"
+import (
+	protobuf "google.golang.org/protobuf/proto"
+)
 
 type GamePlayer struct {
-	SeatID battle.SeatID
+	SeatID int32
 	Score  int64
 	Robot  bool
 }
 
-func (p *GamePlayer) GetSeatID() battle.SeatID {
+func (p *GamePlayer) GetSeatID() int32 {
 	return p.SeatID
 }
 func (p *GamePlayer) GetScore() int64 {
@@ -16,4 +18,7 @@ func (p *GamePlayer) GetScore() int64 {
 }
 func (p *GamePlayer) IsRobot() bool {
 	return p.Robot
+}
+func (p *GamePlayer) SendMessage(protobuf.Message) error {
+	return nil
 }

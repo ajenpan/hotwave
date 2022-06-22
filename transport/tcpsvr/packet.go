@@ -1,9 +1,39 @@
-package tcp
+package tcpsvr
 
 import (
 	"errors"
 	"fmt"
 )
+
+func NewPacket(typ uint8, raw []byte) *Packet {
+	l := int32(len(raw))
+	if l >= MaxPacketSize {
+		panic(ErrPacketSizeExcced)
+	}
+	p := &Packet{
+		PacketHead: PacketHead{
+			Typ:    typ,
+			RawLen: l,
+		},
+		Raw: raw,
+	}
+	return p
+}
+
+func CopyPacket(f *Packet) *Packet {
+	p := &Packet{
+		PacketHead: PacketHead{
+			Typ:    f.Typ,
+			RawLen: int32(len(f.Raw)),
+		},
+	}
+
+	if len(f.Raw) > 0 {
+		p.Raw = make([]byte, len(f.Raw))
+		copy(p.Raw, f.Raw)
+	}
+	return p
+}
 
 // Codec constants.
 const (
@@ -30,10 +60,11 @@ const (
 	PacketTypeStatAt_   PacketType = iota
 	PacketTypeHeartbeat PacketType = iota
 	PacketTypeAck       PacketType = iota
-	PacketTypePacket    PacketType = iota
 	PacketTypeEcho      PacketType = iota
+	PacketTypePacket    PacketType = iota
 	PacketTypeError     PacketType = iota
-	PacketTypeEndAt_    PacketType = iota
+	// PacketTypeEndAt_    PacketType = iota
+	// ... custom packet type
 )
 
 type PacketHead struct {
@@ -45,17 +76,23 @@ func (p *PacketHead) HeadLen() int {
 	return HeadLength
 }
 
-func (p *PacketHead) Encode(headRaw []byte) {
+func (p *PacketHead) Encode(headRaw []byte) error {
+	if p.Typ <= PacketTypeStatAt_ {
+		return fmt.Errorf("packet type is invalid")
+	}
 	headRaw[0] = p.Typ
 	copy(headRaw[1:HeadLength], intToBytes(p.RawLen))
+	return nil
 }
 
 func (p *PacketHead) Decode(headRaw []byte) error {
 	if len(headRaw) != p.HeadLen() {
 		return fmt.Errorf("head len is wrong")
 	}
+
 	p.Typ = uint8(headRaw[0])
-	if p.Typ <= PacketTypeStatAt_ || p.Typ > PacketTypeEndAt_ {
+	// if p.Typ <= PacketTypeStatAt_ || p.Typ > PacketTypeEndAt_ {
+	if p.Typ <= PacketTypeStatAt_ {
 		return fmt.Errorf("packet type is invalid")
 	}
 
@@ -72,11 +109,13 @@ type Packet struct {
 	Raw []byte
 }
 
-func NewAckPacket() *Packet {
+func NewAckPacket(raw []byte) *Packet {
 	return &Packet{
 		PacketHead: PacketHead{
-			Typ: PacketTypeAck,
+			Typ:    PacketTypeAck,
+			RawLen: int32(len(raw)),
 		},
+		Raw: raw,
 	}
 }
 
