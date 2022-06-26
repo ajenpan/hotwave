@@ -9,7 +9,7 @@ import (
 
 	protobuf "google.golang.org/protobuf/proto"
 
-	"hotwave/services/gateway/gate"
+	"hotwave/services/gate"
 	"hotwave/services/gateway/proto"
 )
 

@@ -1,25 +1,17 @@
 syntax = "proto3";
 
-package adapter;
+package gateway;
 
 option go_package = "services/gateway/proto;proto";
 
-service GateAdapter {
-  rpc UserEvent(AsyncMessageWraper) returns (SteamClosed) {}
-  rpc EventStream(stream AsyncMessageWraper) returns (stream AsyncMessageWraper) {}
-}
-
 message ClientMessageWraper {
-  enum MessageType {
-    Request = 0;
-    Response = 1;
-    Async = 2;
-  }
-  string method = 1;
-  map<string, string> meta = 2;
   bytes body = 3;
-  string endpoint = 4; // for special server, here is nodeid
-  MessageType typ = 5;
+  // for special server, here is nodeid
+  string method = 4;
+  oneof endpoint {
+    string nodeid = 5;
+    string server = 6;
+  }
 }
 
 message AsyncMessageWraper {
@@ -27,8 +19,4 @@ message AsyncMessageWraper {
   string topic = 2;
   map<string, string> meta = 3;
   bytes body = 4;
-}
-
-message SteamClosed {
-  string msg = 1;
 }

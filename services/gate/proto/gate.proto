@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package gate;
+
+option go_package = "services/gate/proto;proto";
+
+message AsyncMessageWrap {
+  map<string, string> meta = 2;
+  bytes body = 3;
+  // for special server, here is nodeid
+  string method = 4;
+  string nodeid = 5;
+  string service = 6;
+}

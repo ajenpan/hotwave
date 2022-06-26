@@ -15,10 +15,11 @@ import (
 	protocol "hotwave/services/gateway/proto"
 	"hotwave/services/gateway/protostore"
 	utlhandle "hotwave/transport"
+	"hotwave/transport/tcpsvr"
 )
 
-func NewGater() *Gater {
-	g := &Gater{
+func NewGater() *Gateway {
+	g := &Gateway{
 		protoStore: protostore.NewMomoryStore(),
 	}
 
@@ -39,12 +40,35 @@ func NewGater() *Gater {
 	return g
 }
 
-type Gater struct {
+type Gateway struct {
 	user2session  sync.Map //map[uint64]*gate.Session
 	tclientLock   sync.RWMutex
 	allowList     sync.Map
 	gateCallTable *utlhandle.CallTable
 	protoStore    *protostore.MomoryStore
+}
+
+func (g *Gateway) OnClientMessage(s *tcpsvr.Socket, p *tcpsvr.Packet) {
+	if p.Typ != tcpsvr.PacketTypePacket {
+		return
+	}
+
+	msg := &protocol.ClientMessageWraper{}
+	err := protobuf.Unmarshal(p.Raw, msg)
+
+	if err != nil {
+		return
+	}
+
+}
+
+func (g *Gateway) OnClientConnStat(s *tcpsvr.Socket, ss tcpsvr.SocketStat) {
+	switch ss {
+	case tcpsvr.SocketStatConnected:
+
+	case tcpsvr.SocketStatDisconnected:
+
+	}
 }
 
 // func (g *Gater) GetGateAdapterClient(node *router.Node) protocol.GateAdapterClient {
@@ -73,12 +97,12 @@ type Gater struct {
 // 	return client
 // }
 
-func (g *Gater) SendSessionErrorAndClose(session gate.Session, err error) {
+func (g *Gateway) SendSessionErrorAndClose(session gate.Session, err error) {
 	logger.Error(err)
 	session.Close()
 }
 
-func (g *Gater) OnGateMethod(ctx context.Context, msg *protocol.ClientMessageWraper) (*protocol.ClientMessageWraper, error) {
+func (g *Gateway) OnGateMethod(ctx context.Context, msg *protocol.ClientMessageWraper) (*protocol.ClientMessageWraper, error) {
 
 	// msg.Method.
 	// req,resp,err:=g.protoStore.NewTypeByMethod(msg.Method)
@@ -123,7 +147,7 @@ func (g *Gater) OnGateMethod(ctx context.Context, msg *protocol.ClientMessageWra
 	return nil, nil
 }
 
-func (g *Gater) OnGateAsync(session gate.Session, msg *protocol.ClientMessageWraper) {
+func (g *Gateway) OnGateAsync(session gate.Session, msg *protocol.ClientMessageWraper) {
 	name := protoreflect.FullName(msg.Method)
 	serverName := string(name.Parent())
 	fmt.Println(serverName)
@@ -178,7 +202,7 @@ func (g *Gater) OnGateAsync(session gate.Session, msg *protocol.ClientMessageWra
 	// }
 }
 
-func (g *Gater) OnGateConnStat(session gate.Session, status gate.SocketStat) {
+func (g *Gateway) OnGateConnStat(session gate.Session, status gate.SocketStat) {
 	fmt.Printf("session:%s, connect state:%v \n", session.ID(), status)
 	switch status {
 	case gate.SocketStatConnected:
@@ -186,7 +210,7 @@ func (g *Gater) OnGateConnStat(session gate.Session, status gate.SocketStat) {
 	}
 }
 
-func (g *Gater) OnUserMessage(s gate.Session, msg *protocol.ClientMessageWraper) {
+func (g *Gateway) OnUserMessage(s gate.Session, msg *protocol.ClientMessageWraper) {
 	logger.Infof("OnUserMessage: %s", msg.Method)
 
 	g.gateCallTable.Get(msg.Method)
@@ -227,7 +251,7 @@ func (g *Gater) OnUserMessage(s gate.Session, msg *protocol.ClientMessageWraper)
 
 }
 
-func (g *Gater) SendMessageToUse(ctx context.Context, in *protocol.SendMessageToUserRequest) (*protocol.SendMessageToUserResponse, error) {
+func (g *Gateway) SendMessageToUse(ctx context.Context, in *protocol.SendMessageToUserRequest) (*protocol.SendMessageToUserResponse, error) {
 	out := &protocol.SendMessageToUserResponse{}
 	v, has := g.user2session.Load(in.Uid)
 	if !has {
@@ -254,7 +278,7 @@ func CtxWithSessionValue(ctx context.Context) (gate.Session, bool) {
 	return v, ok
 }
 
-func (g *Gater) Login(ctx context.Context, in *protocol.LoginRequest) (*protocol.LoginResponse, error) {
+func (g *Gateway) Login(ctx context.Context, in *protocol.LoginRequest) (*protocol.LoginResponse, error) {
 	out := &protocol.LoginResponse{
 		Flag: protocol.LoginResponse_Success,
 	}
@@ -282,7 +306,7 @@ func (g *Gater) Login(ctx context.Context, in *protocol.LoginRequest) (*protocol
 	return out, nil
 }
 
-func (g *Gater) Echo(ctx context.Context, in *protocol.EchoRequest) (*protocol.EchoResponse, error) {
+func (g *Gateway) Echo(ctx context.Context, in *protocol.EchoRequest) (*protocol.EchoResponse, error) {
 	out := &protocol.EchoResponse{
 		Data: in.Data,
 	}
