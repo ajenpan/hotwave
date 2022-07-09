@@ -11,7 +11,7 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	"hotwave/logger"
-	"hotwave/services/gateway/gate"
+	"hotwave/services/gate"
 	protocol "hotwave/services/gateway/proto"
 	"hotwave/services/gateway/protostore"
 	utlhandle "hotwave/transport"

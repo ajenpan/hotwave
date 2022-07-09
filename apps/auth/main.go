@@ -9,7 +9,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"hotwave"
+	"hotwave/core"
 	"hotwave/services/auth/handler"
 	"hotwave/services/auth/proto"
 	"hotwave/transport"
@@ -58,8 +58,8 @@ func Run() error {
 	app.Name = Name
 
 	app.Action = func(c *cli.Context) error {
-		core := hotwave.New(
-			hotwave.NewOptions(),
+		core := core.New(
+			core.NewOptions(),
 		)
 		fmt.Println(core)
 		// h, err := handler.New(config.DefaultConf)
