@@ -5,11 +5,11 @@ import (
 	"time"
 
 	log "hotwave/logger"
-	"hotwave/transport/tcpsvr"
-	utilSignal "hotwave/util/signal"
+	"hotwave/transport/tcp"
+	utilSignal "hotwave/utils/signal"
 )
 
-func reconnectFunc(s *tcpsvr.Client) {
+func reconnectFunc(s *tcp.Client) {
 	time.Sleep(2 * time.Second)
 
 	log.Info("reconnect to ", s.Opt.RemoteAddress)
@@ -28,24 +28,23 @@ func main() {
 	port := os.Args[2]
 
 	remoteAddr := remote + ":" + port
-	client := tcpsvr.NewClient(&tcpsvr.ClientOptions{
+	client := tcp.NewClient(&tcp.ClientOptions{
 		RemoteAddress: remoteAddr,
-		OnMessage: func(s *tcpsvr.Client, p *tcpsvr.Packet) {
-			p2 := tcpsvr.CopyPacket(p)
-
+		OnMessage: func(s *tcp.Client, p *tcp.Packet) {
+			p2 := tcp.CopyPacket(p)
 			go func() {
 				log.Info("OnMessage:", s.ID(), ", len:", p2.RawLen, ", typ:", p2.Typ)
 				time.Sleep(1 * time.Second)
-				err := s.Send(p2)
+				err := s.SendPacket(p2)
 				if err != nil {
 					log.Info("response message failed:", err)
 				}
 			}()
 		},
-		OnConnStat: func(s *tcpsvr.Client, state tcpsvr.SocketStat) {
-			log.Info("OnConnStat:", tcpsvr.SocketStatString(state), s.ID())
-			if state == tcpsvr.SocketStatConnected {
-				err := s.Send(tcpsvr.NewPacket(tcpsvr.PacketTypeEcho, []byte("hello world")))
+		OnConnStat: func(s *tcp.Client, state tcp.SocketStat) {
+			log.Info("OnConnStat:", tcp.SocketStatString(state), " id:", s.ID())
+			if state == tcp.SocketStatConnected {
+				err := s.SendPacket(tcp.NewPacket(tcp.PacketTypeEcho, []byte("hello world")))
 				if err != nil {
 					log.Info("send failed", err)
 				}

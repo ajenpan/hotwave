@@ -1,98 +1,209 @@
 package main
 
 import (
-	"bytes"
+	"crypto/rsa"
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"net/http"
 	"os"
-	"runtime"
+	"reflect"
 
 	"github.com/urfave/cli/v2"
+	"google.golang.org/protobuf/encoding/protojson"
+	protobuf "google.golang.org/protobuf/proto"
+	"gorm.io/driver/mysql"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 
-	"hotwave/core"
-	"hotwave/services/auth/handler"
-	"hotwave/services/auth/proto"
-	"hotwave/transport"
+	log "hotwave/logger"
+	"hotwave/service/auth/handler"
+	"hotwave/service/auth/proto"
+	"hotwave/service/auth/store/cache"
+	"hotwave/service/auth/store/models"
+	"hotwave/utils/calltable"
+	"hotwave/utils/rsagen"
 )
 
-var (
-	Name       string = "unknown"
-	Version    string = "unknown"
-	GitCommit  string = "unknown"
-	BuildAt    string = "unknown"
-	BuildBy    string = runtime.Version()
-	RunnningOS string = runtime.GOOS + "/" + runtime.GOARCH
-)
+var Version string = "unknown"
+var GitCommit string = "unknown"
+var BuildAt string = "unknown"
+var BuildBy string = "unknown"
+var Name string = "auth"
 
-func shortVersion() string {
-	return Version
-}
+var ConfigPath string = ""
+var ListenAddr string = ""
+var PrintConf bool = false
 
-func longVersion() string {
-	buf := bytes.NewBuffer(nil)
-	fmt.Println(buf, "project:", Name)
-	fmt.Println(buf, "version:", Version)
-	fmt.Println(buf, "git commit:", GitCommit)
-	fmt.Println(buf, "build at:", BuildAt)
-	fmt.Println(buf, "build by:", BuildBy)
-	fmt.Fprintln(buf, "Running OS/Arch:", RunnningOS)
-	return buf.String()
+func ReadRSAKey() (*rsa.PrivateKey, error) {
+	const privateFile = "private.pem"
+	const publicFile = "public.pem"
+
+	raw, err := os.ReadFile(privateFile)
+	if err != nil {
+		privateKey, publicKey, err := rsagen.GenerateRsaPem(2048)
+		if err != nil {
+			return nil, err
+		}
+		raw = []byte(privateKey)
+		os.WriteFile(privateFile, []byte(privateKey), 0644)
+		os.WriteFile(publicFile, []byte(publicKey), 0644)
+	}
+	return rsagen.ParseRsaPrivateKeyFromPem(raw)
 }
 
 func main() {
-	err := Run()
-	if err != nil {
-		fmt.Println(err)
-	}
-}
-
-func Run() error {
-	Name = "auth"
-
 	cli.VersionPrinter = func(c *cli.Context) {
-		fmt.Println(longVersion())
+		fmt.Println("project:", Name)
+		fmt.Println("version:", Version)
+		fmt.Println("git commit:", GitCommit)
+		fmt.Println("build at:", BuildAt)
+		fmt.Println("build by:", BuildBy)
 	}
 
 	app := cli.NewApp()
-	app.Version = Version
 	app.Name = Name
-
-	app.Action = func(c *cli.Context) error {
-		core := core.New(
-			core.NewOptions(),
-		)
-		fmt.Println(core)
-		// h, err := handler.New(config.DefaultConf)
-		// if err != nil {
-		// 	panic(err)
-		// }
-
-		// reflection.Register(core.GrpcServer())
-
-		// if err := core.Start(); err != nil {
-		// 	return err
-		// }
-		// defer core.Stop()
-
-		// httpServer(h)
-
-		// s := utilSignal.WaitShutdown()
-		// logger.Infof("recv signal: %v", s.String())
-		return nil
+	app.Version = Version
+	app.Flags = []cli.Flag{
+		&cli.StringFlag{
+			Name:        "config",
+			Aliases:     []string{"c"},
+			Value:       "config.yaml",
+			Destination: &ConfigPath,
+		}, &cli.StringFlag{
+			Name:        "listen",
+			Aliases:     []string{"l"},
+			Value:       ":10010",
+			Destination: &ListenAddr,
+		}, &cli.BoolFlag{
+			Name:        "print-config",
+			Destination: &PrintConf,
+			Hidden:      true,
+		},
 	}
 
-	err := app.Run(os.Args)
-	return err
+	app.Action = RealMain
+
+	if err := app.Run(os.Args); err != nil {
+		log.Error(err)
+		os.Exit(-1)
+	}
 }
 
-var calltable = transport.ExtractProtoFile(proto.File_auth_proto, &handler.Handler{})
+func createMysqlClient(dsn string) *gorm.DB {
+	dbc, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
+		DisableNestedTransaction: true, //关闭嵌套事务
+		NamingStrategy: schema.NamingStrategy{
+			SingularTable: true,
+		},
+	})
+	if err != nil {
+		panic(err)
+	}
 
-func httpServer(handler interface{}) {
-	go func() {
-		http.HandleFunc("/", transport.ServerGRPCMethodForHttp(handler, calltable))
-		err := http.ListenAndServe(":8088", nil)
-		if err != nil {
-			fmt.Println(err)
+	if err = dbc.AutoMigrate(&models.Users{}); err != nil {
+		log.Error(err)
+	}
+	return dbc
+}
+
+func createSQLiteClient(dsn string) *gorm.DB {
+	dbc, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		panic(err)
+	}
+	if err = dbc.AutoMigrate(&models.Users{}); err != nil {
+		log.Error(err)
+	}
+	return dbc
+}
+
+func RealMain(c *cli.Context) error {
+	pk, err := ReadRSAKey()
+	if err != nil {
+		panic(err)
+	}
+	authHandler := handler.NewAuth(handler.AuthOptions{
+		PK: pk,
+		// DB:     createMysqlClient("root:123456@tcp(localhost:3306)/auth?charset=utf8mb4&parseTime=True&loc=Local"),
+		DB:    createSQLiteClient("auth.db"),
+		Cache: cache.NewMemory(),
+	})
+
+	ct := calltable.ExtractParseGRpcMethod(proto.File_proto_auth_proto.Services(), authHandler)
+	ServerCallTable(http.DefaultServeMux, authHandler, ct)
+	fmt.Println("start http server at: ", ListenAddr)
+	return http.ListenAndServe(ListenAddr, nil)
+}
+
+func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.CallTable) {
+	respWithError := func(w http.ResponseWriter, data interface{}, err error) {
+		type HttpRespType struct {
+			Data    interface{} `json:"data"`
+			Code    int         `json:"code"`
+			Message string      `json:"message"`
 		}
-	}()
+		respWrap := &HttpRespType{
+			Data:    data,
+			Message: "ok",
+		}
+		if err != nil {
+			respWrap.Code = -1
+			respWrap.Message = err.Error()
+		}
+		raw, _ := json.Marshal(respWrap)
+		w.Write(raw)
+	}
+
+	ct.Range(func(key string, method *calltable.Method) bool {
+		pattern := "/" + key
+		fmt.Println("handle: ", pattern)
+		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
+			raw, err := ioutil.ReadAll(r.Body)
+
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+
+			if err != nil {
+				respWithError(w, nil, fmt.Errorf("read body error: %s", err.Error()))
+				return
+			}
+
+			req := reflect.New(method.RequestType).Interface().(protobuf.Message)
+
+			// todo : get marshaler
+			if err := protojson.Unmarshal(raw, req); err != nil {
+				respWithError(w, nil, fmt.Errorf("unmarshal request error: %s", err.Error()))
+				return
+			}
+
+			// here call method
+			respArgs := method.Call(handler, r.Context(), req)
+
+			if len(respArgs) != 2 {
+				return
+			}
+
+			var respErr error
+			if !respArgs[1].IsNil() {
+				respErr = respArgs[1].Interface().(error)
+			}
+
+			var respData json.RawMessage
+
+			if !respArgs[0].IsNil() {
+				if resp, ok := respArgs[0].Interface().(protobuf.Message); ok {
+					data, err := protojson.MarshalOptions{EmitUnpopulated: true, UseProtoNames: true}.Marshal(resp)
+					if err == nil {
+						respData = data
+					} else {
+						respWithError(w, nil, respErr)
+					}
+				}
+			}
+
+			respWithError(w, respData, respErr)
+		})
+		return true
+	})
 }

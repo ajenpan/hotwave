@@ -1,0 +1,22 @@
+syntax = "proto3";
+
+package gateway;
+
+option go_package = "./service/gateway/proto;proto";
+
+service Gateway {
+    rpc Proxy(stream ToClientMessage) returns (stream ToServerMessage) {}
+  }
+  
+  message ToClientMessage {
+    int64 uid = 1;
+    string name = 2;
+    bytes data = 3;
+  }
+  
+  message ToServerMessage {
+    int64 uid = 1;
+    string name = 2;
+    bytes data = 3;
+  }
+  
