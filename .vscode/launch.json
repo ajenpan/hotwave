@@ -5,18 +5,25 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Launch file",
-            "type": "go",
-            "request": "launch",
-            "mode": "debug",
-            "program": "${file}"
-        },
-        {
-            "name": "Launch battle",
+            "name": "Launch Package",
             "type": "go",
             "request": "launch",
             "mode": "auto",
-            "program": "${workspaceRoot}/apps/battle",
+            "program": "${fileDirname}"
+        },
+        {
+            "name": "Launch allinone",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceRoot}/apps/allinone",
+        },
+        {
+            "name": "Launch auth",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceRoot}/apps/auth",
         },
         {
             "name": "Launch tcpclient",

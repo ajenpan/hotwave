@@ -6,17 +6,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type GameDesk interface {
+type GameTable interface {
 	SendMessageToPlayer(Player, proto.Message)
 	BroadcastMessage(proto.Message)
-	EmitEvent(proto.Message)
+	PublishEvent(proto.Message)
 	ReportGameOver()
 }
 
 type GameStatus int16
 
 type GameLogic interface {
-	OnInit(desk GameDesk, conf interface{}) error
+	OnInit(desk GameTable, conf interface{}) error
 	OnStart(players []Player) error
 	OnTick(time.Duration)
 	OnReset()

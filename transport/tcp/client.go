@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"net"
 	"sync"
-	"sync/atomic"
 	"time"
+
+	"hotwave/transport"
 )
 
 type ClientOption func(*ClientOptions)
@@ -52,11 +53,6 @@ type Client struct {
 	*Socket
 	Opt   *ClientOptions
 	mutex sync.Mutex
-}
-
-//retrun socket work status
-func (a *Client) Status() int32 {
-	return atomic.LoadInt32(&a.state)
 }
 
 func (c *Client) Connect() error {
@@ -111,8 +107,8 @@ func (c *Client) Connect() error {
 		go socket.writeWork()
 
 		if c.Opt.OnConnStat != nil {
-			c.Opt.OnConnStat(c, SocketStatConnected)
-			defer c.Opt.OnConnStat(c, SocketStatDisconnected)
+			c.Opt.OnConnStat(c, transport.Connected)
+			defer c.Opt.OnConnStat(c, transport.Disconnected)
 		}
 
 		go func() {

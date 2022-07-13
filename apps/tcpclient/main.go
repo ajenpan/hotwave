@@ -5,6 +5,7 @@ import (
 	"time"
 
 	log "hotwave/logger"
+	"hotwave/transport"
 	"hotwave/transport/tcp"
 	utilSignal "hotwave/utils/signal"
 )
@@ -42,9 +43,9 @@ func main() {
 			}()
 		},
 		OnConnStat: func(s *tcp.Client, state tcp.SocketStat) {
-			log.Info("OnConnStat:", tcp.SocketStatString(state), " id:", s.ID())
-			if state == tcp.SocketStatConnected {
-				err := s.SendPacket(tcp.NewPacket(tcp.PacketTypeEcho, []byte("hello world")))
+			log.Info("OnConnStat:", state, " id:", s.ID())
+			if state == transport.Connected {
+				err := s.SendPacket(tcp.NewPacket(tcp.PacketTypePing, []byte("hello world")))
 				if err != nil {
 					log.Info("send failed", err)
 				}

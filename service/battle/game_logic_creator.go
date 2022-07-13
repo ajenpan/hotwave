@@ -14,7 +14,7 @@ func (c *GameLogicCreator) Store(name string, creator func() GameLogic) error {
 	return nil
 }
 
-func (c *GameLogicCreator) CreateLogic(name string, conf []byte) (GameLogic, error) {
+func (c *GameLogicCreator) CreateLogic(name string) (GameLogic, error) {
 	v, has := c.store.Load(name)
 	if !has {
 		return nil, fmt.Errorf("game logic %s not found", name)

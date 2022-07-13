@@ -4,6 +4,8 @@ import (
 	"net"
 	"sync"
 	"time"
+
+	"hotwave/transport"
 )
 
 type ServerOption func(*ServerOptions)
@@ -11,8 +13,8 @@ type ServerOption func(*ServerOptions)
 type ServerOptions struct {
 	Address          string
 	HeatbeatInterval time.Duration
-	OnMessage        OnMessageFunc
-	OnConn           OnConnStatFunc
+	OnMessage        transport.OnMessageFunc
+	OnConn           transport.OnConnStatFunc
 	NewIDFunc        NewIDFunc
 }
 
@@ -128,8 +130,8 @@ func (n *Server) accept(socket *Socket) {
 	defer n.removeSocket(socket)
 
 	if n.opts.OnConn != nil {
-		n.opts.OnConn(socket, SocketStatConnected)
-		defer n.opts.OnConn(socket, SocketStatDisconnected)
+		n.opts.OnConn(socket, transport.Connected)
+		defer n.opts.OnConn(socket, transport.Disconnected)
 	}
 
 	var socketErr error = nil
@@ -151,7 +153,7 @@ func (n *Server) accept(socket *Socket) {
 			}
 		case PacketTypeHeartbeat:
 			fallthrough
-		case PacketTypeEcho:
+		case PacketTypePing:
 			if err := socket.SendPacket(CopyPacket(p)); err != nil {
 				brk = true
 			}

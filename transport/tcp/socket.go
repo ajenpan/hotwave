@@ -5,30 +5,16 @@ import (
 	"fmt"
 	"io"
 	"net"
-	"sync"
 	"sync/atomic"
 	"time"
+
+	"hotwave/transport"
 )
 
-type OnMessageFunc func(*Socket, []byte)
-type OnConnStatFunc func(*Socket, SocketStat)
+type OnMessageFunc func(transport.Session, []byte)
+type OnConnStatFunc func(transport.Session, transport.SessionStat)
 
-type SocketStat = int32
-
-const (
-	SocketStatConnected    SocketStat = 1
-	SocketStatDisconnected SocketStat = 2
-)
-
-func SocketStatString(s SocketStat) string {
-	switch s {
-	case SocketStatConnected:
-		return "connected"
-	case SocketStatDisconnected:
-		return "disconnected"
-	}
-	return "unknown"
-}
+type SocketStat = transport.SessionStat
 
 type SocketOptions struct {
 	ID string
@@ -50,24 +36,25 @@ func NewSocket(conn net.Conn, opts SocketOptions) *Socket {
 	ret := &Socket{
 		id:       opts.ID,
 		conn:     conn,
-		timeOut:  10 * time.Second,
+		timeOut:  120 * time.Second,
 		chSend:   make(chan *Packet, 10),
 		chClosed: make(chan bool),
-		state:    SocketStatConnected,
+		state:    transport.Connected,
 	}
 	return ret
 }
 
 type Socket struct {
-	sync.RWMutex // export
+	transport.SyncMapSocketMeta
 
-	conn     net.Conn   // low-level conn fd
-	state    SocketStat // current state
+	// sync.RWMutex // export
+
+	conn     net.Conn              // low-level conn fd
+	state    transport.SessionStat // current state
 	id       string
 	chSend   chan *Packet // push message queue
 	chClosed chan bool
 	timeOut  time.Duration
-	Meta     sync.Map
 }
 
 func (s *Socket) ID() string {
@@ -75,7 +62,7 @@ func (s *Socket) ID() string {
 }
 
 func (s *Socket) SendPacket(p *Packet) error {
-	if atomic.LoadInt32(&s.state) == SocketStatDisconnected {
+	if atomic.LoadInt32((*int32)(&s.state)) == int32(transport.Disconnected) {
 		return errors.New("sendPacket failed, the socket is disconnected")
 	}
 	if p.Typ == 0 {
@@ -97,7 +84,11 @@ func (s *Socket) SendError(err error) {
 	})
 }
 
-func (s *Socket) Send(raw []byte) error {
+func (s *Socket) Send(iraw interface{}) error {
+	raw, ok := iraw.([]byte)
+	if !ok {
+		return errors.New("send data must be []byte")
+	}
 	return s.SendPacket(&Packet{
 		PacketHead: PacketHead{
 			Typ: PacketTypePacket,
@@ -110,8 +101,8 @@ func (s *Socket) Close() {
 	if s == nil {
 		return
 	}
-	stat := atomic.SwapInt32(&s.state, SocketStatDisconnected)
-	if stat == SocketStatDisconnected {
+	stat := atomic.SwapInt32((*int32)(&s.state), int32(transport.Disconnected))
+	if stat == int32(transport.Disconnected) {
 		return
 	}
 
@@ -141,9 +132,9 @@ func (s *Socket) LocalAddr() string {
 //retrun socket work status
 func (s *Socket) Status() SocketStat {
 	if s == nil {
-		return SocketStatDisconnected
+		return transport.Disconnected
 	}
-	return s.state
+	return transport.SessionStat(atomic.LoadInt32((*int32)(&s.state)))
 }
 
 // String, implementation for Stringer interface
@@ -159,14 +150,6 @@ func (s *Socket) writeWork() {
 			fmt.Println(err)
 		}
 	}
-}
-
-func (s *Socket) SetMeta(k string, v interface{}) {
-	s.Meta.Store(k, v)
-}
-
-func (s *Socket) GetMeta(k string) (interface{}, bool) {
-	return s.Meta.Load(k)
 }
 
 func writeAll(conn net.Conn, raw []byte) (int, error) {
@@ -185,7 +168,7 @@ func writeAll(conn net.Conn, raw []byte) (int, error) {
 }
 
 func (s *Socket) readPacket(p *Packet) error {
-	if atomic.LoadInt32(&s.state) == SocketStatDisconnected {
+	if s.Status() == transport.Disconnected {
 		return errors.New("recv packet failed, the socket is disconnected")
 	}
 
@@ -217,9 +200,10 @@ func (s *Socket) readPacket(p *Packet) error {
 }
 
 func (s *Socket) writePacket(p *Packet) error {
-	if atomic.LoadInt32(&s.state) == SocketStatDisconnected {
-		return errors.New("writePacket failed, the socket is disconnected")
+	if s.Status() == transport.Disconnected {
+		return errors.New("recv packet failed, the socket is disconnected")
 	}
+
 	var err error
 	p.RawLen = int32(len(p.Raw))
 

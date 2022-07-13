@@ -5,7 +5,6 @@ import (
 	"net/http"
 
 	"hotwave/logger"
-	// "hotwave/service/gateway/proto"
 )
 
 func NewHttpServer(opts Options) *HttpServer {

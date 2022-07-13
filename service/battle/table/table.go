@@ -90,7 +90,7 @@ func (d *Table) Close() {
 	close(d.action)
 }
 
-func (d *Table) SendMessage(p battle.Player, msg proto.Message) {
+func (d *Table) SendMessageToPlayer(p battle.Player, msg proto.Message) {
 	err := p.SendMessage(msg)
 	if err != nil {
 		log.Error(err)
@@ -106,13 +106,13 @@ func (d *Table) OnWatcherJoin() {
 func (d *Table) BroadcastMessage(msg proto.Message) {
 	d.players.Range(func(key, value interface{}) bool {
 		if p, ok := value.(*player); ok && p != nil {
-			d.SendMessage(p, msg)
+			d.SendMessageToPlayer(p, msg)
 		}
 		return true
 	})
 }
 
-func (d *Table) EmitEvent(event proto.Message) {
+func (d *Table) PublishEvent(event proto.Message) {
 	//TODO:
 }
 
@@ -137,7 +137,10 @@ func (d *Table) getPlayer(uid int64) *player {
 	return nil
 }
 
-func (d *Table) OnBattleMessage(ctx context.Context, msg *pb.BattleMessageWrap) {
+func (d *Table) OnBattleMessage(ctx context.Context, fmsg *pb.BattleMessageWrap) {
+	// here is not safe
+	msg := proto.Clone(fmsg).(*pb.BattleMessageWrap)
+
 	d.action <- func() {
 		p := d.getPlayer(msg.Uid)
 		if p != nil && d.logic != nil {

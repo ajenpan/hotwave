@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"fmt"
 	"os"
 	"runtime"
@@ -10,10 +9,7 @@ import (
 	"github.com/urfave/cli/v2"
 
 	"hotwave/logger"
-	battleHandler "hotwave/services/battle/handler"
-	"hotwave/services/battle/proto"
-	"hotwave/transport/tcpsvr"
-	utilSignal "hotwave/util/signal"
+	utilSignal "hotwave/utils/signal"
 )
 
 var (
@@ -56,24 +52,24 @@ func Run() error {
 
 	app.Action = func(c *cli.Context) error {
 
-		h := battleHandler.New()
+		// h := battleHandler.New()
 
-		svr := tcpsvr.NewServer(&tcpsvr.ServerOptions{
-			Address: ":10010",
-			OnConn: func(s *tcpsvr.Socket, ss tcpsvr.SocketStat) {
-				logger.Infof("socket:%s conn:%s", s.ID(), tcpsvr.SocketStatString(ss))
-			},
-			OnMessage: func(s *tcpsvr.Socket, p *tcpsvr.Packet) {
-				msg := &proto.BattleMessageWrap{}
-				h.OnBattleMessage(context.Background(), msg)
-			},
-		})
+		// svr := tcpsvr.NewServer(&tcpsvr.ServerOptions{
+		// 	Address: ":10010",
+		// 	OnConn: func(s *tcpsvr.Socket, ss tcpsvr.SocketStat) {
+		// 		logger.Infof("socket:%s conn:%s", s.ID(), tcpsvr.SocketStatString(ss))
+		// 	},
+		// 	OnMessage: func(s *tcpsvr.Socket, p *tcpsvr.Packet) {
+		// 		msg := &proto.BattleMessageWrap{}
+		// 		h.OnBattleMessage(context.Background(), msg)
+		// 	},
+		// })
 
-		err := svr.Start()
-		if err != nil {
-			return err
-		}
-		defer svr.Stop()
+		// err := svr.Start()
+		// if err != nil {
+		// 	return err
+		// }
+		// defer svr.Stop()
 
 		// core := frame.New(
 		// 	frame.Name(Name),

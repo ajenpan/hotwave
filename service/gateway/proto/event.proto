@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package gateway;
+
+option go_package = "./service/gateway/proto;proto";
+
+message UserConnect {
+  int64 uid = 1;  
+}
+
+message UserDisconnect {
+  int64 uid = 1;
+}

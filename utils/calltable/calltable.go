@@ -8,14 +8,15 @@ import (
 type MethodStyle int
 
 const (
-	StyleMicro = iota // func (context.Context, proto.Message, proto.Message) ( error)
-	StyleGRpc  = iota // func (context.Context, proto.Message) (proto.Message, error)
-	StyleAsync = iota // func (context.Context, proto.Message) (error)
+	StyleMicro   = iota // func (context.Context, proto.Message, proto.Message) ( error)
+	StyleGRpc    = iota // func (context.Context, proto.Message) (proto.Message, error)
+	StyleAsync   = iota // func (session, proto.Message) error
+	StyleRequest = iota // func (session, proto.Message) (proto.Message, error)
 )
 
 type NewTypeFunc = func() interface{}
 
-const endpointSplit = "/"
+const EndpointSplit = "/"
 
 type Method struct {
 	Imp   reflect.Method
@@ -26,25 +27,16 @@ type Method struct {
 	RequestType  reflect.Type
 	ResponseType reflect.Type
 
-	NewRequest  NewTypeFunc
-	NewResponse NewTypeFunc
-
 	reqPool  *sync.Pool
 	respPool *sync.Pool
 }
 
-func (m *Method) init() {
+func (m *Method) InitPool() {
 	if m.RequestType != nil {
-		m.NewRequest = func() interface{} {
-			return reflect.New(m.RequestType).Interface()
-		}
 		m.reqPool = &sync.Pool{New: m.NewRequest}
 	}
 
 	if m.ResponseType != nil {
-		m.NewResponse = func() interface{} {
-			return reflect.New(m.ResponseType).Interface()
-		}
 		m.respPool = &sync.Pool{New: m.NewResponse}
 	}
 }
@@ -58,32 +50,57 @@ func (m *Method) Call(args ...interface{}) []reflect.Value {
 	return m.Imp.Func.Call(values)
 }
 
-// func (m *Method) NewRequest() interface{} {
-// 	return reflect.New(m.RequestType).Interface()
-// }
-// func (m *Method) NewResponse() interface{} {
-// 	return reflect.New(m.ResponseType).Interface()
-// }
+func (m *Method) NewRequest() interface{} {
+	if m.RequestType == nil {
+		return nil
+	}
+	return reflect.New(m.RequestType).Interface()
+}
+
+func (m *Method) NewResponse() interface{} {
+	if m.ResponseType == nil {
+		return nil
+	}
+	return reflect.New(m.ResponseType).Interface()
+}
 
 func (m *Method) GetRequest() interface{} {
+	if m.reqPool == nil {
+		return m.NewRequest()
+	}
 	return m.reqPool.Get()
 }
 
 func (m *Method) PutRequest(req interface{}) {
+	if m.reqPool == nil {
+		return
+	}
 	m.reqPool.Put(req)
 }
 
 func (m *Method) GetResponse() interface{} {
+	if m.respPool == nil {
+		return m.NewResponse()
+	}
 	return m.respPool.Get()
 }
 
 func (m *Method) PutResponse(resp interface{}) {
+	if m.respPool == nil {
+		return
+	}
 	m.respPool.Put(resp)
 }
 
 type CallTable struct {
 	sync.RWMutex
 	list map[string]*Method
+}
+
+func NewCallTable() *CallTable {
+	return &CallTable{
+		list: make(map[string]*Method),
+	}
 }
 
 func (m *CallTable) Len() int {
@@ -130,4 +147,14 @@ func (m *CallTable) Merge(other *CallTable, overWrite bool) int {
 		ret++
 	}
 	return ret
+}
+
+func (m *CallTable) Add(name string, method *Method) bool {
+	m.Lock()
+	defer m.Unlock()
+	if _, has := m.list[name]; has {
+		return false
+	}
+	m.list[name] = method
+	return true
 }

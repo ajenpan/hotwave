@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/rsa"
 	"encoding/json"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"reflect"
 
 	"github.com/urfave/cli/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
 	protobuf "google.golang.org/protobuf/proto"
 	"gorm.io/driver/mysql"
@@ -18,12 +21,16 @@ import (
 	"gorm.io/gorm/schema"
 
 	log "hotwave/logger"
+	"hotwave/marshal"
 	"hotwave/service/auth/handler"
 	"hotwave/service/auth/proto"
 	"hotwave/service/auth/store/cache"
-	"hotwave/service/auth/store/models"
+	gwclient "hotwave/service/gateway/client"
+	gwproto "hotwave/service/gateway/proto"
+	"hotwave/transport"
 	"hotwave/utils/calltable"
 	"hotwave/utils/rsagen"
+	utilSignal "hotwave/utils/signal"
 )
 
 var Version string = "unknown"
@@ -74,7 +81,7 @@ func main() {
 		}, &cli.StringFlag{
 			Name:        "listen",
 			Aliases:     []string{"l"},
-			Value:       ":10010",
+			Value:       ":30020",
 			Destination: &ListenAddr,
 		}, &cli.BoolFlag{
 			Name:        "print-config",
@@ -101,10 +108,6 @@ func createMysqlClient(dsn string) *gorm.DB {
 	if err != nil {
 		panic(err)
 	}
-
-	if err = dbc.AutoMigrate(&models.Users{}); err != nil {
-		log.Error(err)
-	}
 	return dbc
 }
 
@@ -112,9 +115,6 @@ func createSQLiteClient(dsn string) *gorm.DB {
 	dbc, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		panic(err)
-	}
-	if err = dbc.AutoMigrate(&models.Users{}); err != nil {
-		log.Error(err)
 	}
 	return dbc
 }
@@ -125,16 +125,53 @@ func RealMain(c *cli.Context) error {
 		panic(err)
 	}
 	authHandler := handler.NewAuth(handler.AuthOptions{
-		PK: pk,
-		// DB:     createMysqlClient("root:123456@tcp(localhost:3306)/auth?charset=utf8mb4&parseTime=True&loc=Local"),
-		DB:    createSQLiteClient("auth.db"),
+		PK:    pk,
+		DB:    createMysqlClient("root:123456@tcp(localhost:3306)/auth?charset=utf8mb4&parseTime=True&loc=Local"),
 		Cache: cache.NewMemory(),
 	})
 
-	ct := calltable.ExtractParseGRpcMethod(proto.File_proto_auth_proto.Services(), authHandler)
+	ct := calltable.ExtractParseGRpcMethod(proto.File_service_auth_proto_auth_proto.Services(), authHandler)
+	authHandler.CT = ct
+
 	ServerCallTable(http.DefaultServeMux, authHandler, ct)
 	fmt.Println("start http server at: ", ListenAddr)
-	return http.ListenAndServe(ListenAddr, nil)
+
+	go func() {
+		http.ListenAndServe(ListenAddr, nil)
+	}()
+
+	grpcConn, err := grpc.Dial("localhost:20000", grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		panic(err)
+	}
+
+	gwc := &gwclient.GRPCClient{
+		GrpcConn: grpcConn,
+		NodeID:   "auth-1",
+		NodeName: "auth",
+		OnConnStatusFunc: func(c *gwclient.GRPCClient, ss transport.SessionStat) {
+			if ss == transport.Connected {
+				c.GetewayClient.AddGateAllowList(context.Background(), &gwproto.AddGateAllowListRequest{
+					Topics: []string{
+						string(protobuf.MessageName(&proto.LoginRequest{})),
+						string(protobuf.MessageName(&proto.CaptchaRequest{})),
+						string(protobuf.MessageName(&proto.LogoutRequest{})),
+					},
+				})
+			} else {
+				go c.Reconnect()
+			}
+		},
+		OnUserMessageFunc: authHandler.OnUserMessage,
+	}
+
+	gwc.Reconnect()
+	defer gwc.Close()
+
+	authHandler.Client = gwc
+	signal := utilSignal.WaitShutdown()
+	log.Infof("recv signal: %v", signal.String())
+	return nil
 }
 
 func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.CallTable) {
@@ -172,7 +209,14 @@ func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.Call
 			req := reflect.New(method.RequestType).Interface().(protobuf.Message)
 
 			// todo : get marshaler
-			if err := protojson.Unmarshal(raw, req); err != nil {
+			jsonpb := &marshal.JSONPb{
+				MarshalOptions: protojson.MarshalOptions{
+					EmitUnpopulated: true,
+					UseProtoNames:   true,
+				},
+			}
+
+			if err := jsonpb.Unmarshal(raw, req); err != nil {
 				respWithError(w, nil, fmt.Errorf("unmarshal request error: %s", err.Error()))
 				return
 			}
@@ -190,10 +234,9 @@ func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.Call
 			}
 
 			var respData json.RawMessage
-
 			if !respArgs[0].IsNil() {
 				if resp, ok := respArgs[0].Interface().(protobuf.Message); ok {
-					data, err := protojson.MarshalOptions{EmitUnpopulated: true, UseProtoNames: true}.Marshal(resp)
+					data, err := jsonpb.Marshal(resp)
 					if err == nil {
 						respData = data
 					} else {

@@ -12,60 +12,133 @@ import (
 
 	log "hotwave/logger"
 	gwProto "hotwave/service/gateway/proto"
-	"hotwave/session"
+	"hotwave/transport"
 )
 
+type UserSession struct {
+	client   *GRPCClient
+	UID      int64
+	SocketID string
+}
+
+func (s *UserSession) Send(msg proto.Message) error {
+
+	data, err := proto.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	warp := &gwProto.ToClientMessage{
+		ToUid:      s.UID,
+		ToSocketid: s.SocketID,
+		Name:       string(proto.MessageName(msg)),
+		Data:       data,
+	}
+
+	return s.client.SendMessage(warp)
+}
+
 type GRPCClient struct {
-	NodeID   string
-	NodeName string
-	Conn     *grpc.ClientConn
-	proxyc   gwProto.Gateway_ProxyClient
+	transport.SyncMapSocketMeta
 
-	status session.SessionStat
+	NodeID        string
+	NodeName      string
+	GrpcConn      *grpc.ClientConn
+	GetewayClient gwProto.GatewayClient
+	proxyc        gwProto.Gateway_ProxyClient
 
-	OnMessage func(*GRPCClient, *gwProto.ToServerMessage)
+	status transport.SessionStat
+
+	OnConnStatusFunc  func(c *GRPCClient, ss transport.SessionStat)
+	OnUserMessageFunc func(s *UserSession, msg *gwProto.ToServerMessage)
 }
 
-func (c *GRPCClient) Close() error {
+func (c *GRPCClient) Close() {
+	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) != transport.Connected {
+		return
+	}
 	c.proxyc.CloseSend()
-	return nil
 }
 
-func (c *GRPCClient) OnConnStatus(ss session.SessionStat) {
+func (c *GRPCClient) ID() string {
+	return c.NodeID
+}
+func (c *GRPCClient) LocalAddr() string {
+	return ""
+}
+func (c *GRPCClient) RemoteAddr() string {
+	return ""
+}
+
+func (c *GRPCClient) OnConnStatus(ss transport.SessionStat) {
 	atomic.SwapInt32((*int32)(&c.status), int32(ss))
 	log.Info("grpc-client-OnConnStatus", ss)
-	switch ss {
-	case session.SessionStatConnected:
-	case session.SessionStatDisconnected:
-		go reconnect(c)
-	default:
+	// switch ss {
+	// case transport.Connected:
+	// case transport.Disconnected:
+	// 	go c.Reconnect()
+	// default:
+	// }
+
+	if c.OnConnStatusFunc != nil {
+		c.OnConnStatusFunc(c, ss)
 	}
 }
 
-func reconnect(s *GRPCClient) {
-	time.Sleep(2 * time.Second)
+func (s *GRPCClient) Reconnect() {
 	err := s.Connect()
 	if err != nil {
 		log.Error(err)
-		go reconnect(s)
+		time.Sleep(2 * time.Second)
+		go s.Reconnect()
 	}
 }
 
+// func (c *GRPCClient) SubUserEvent() error {
+// 	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) == transport.Connected {
+// 		return nil
+// 	}
+// 	md := metadata.New(map[string]string{"nodeid": c.NodeID, "nodename": c.NodeName})
+// 	ctx := metadata.NewOutgoingContext(context.Background(), md)
+// 	disconn := &gwProto.UserDisconnect{}
+// 	conn := &gwProto.UserConnect{}
+// 	req := &evProto.SubscribeRequest{
+// 		Topics: []string{
+// 			string(proto.MessageName(disconn)),
+// 			string(proto.MessageName(conn)),
+// 		},
+// 	}
+// 	subc, err := evProto.NewEventClient(c.Conn).Subscribe(ctx, req)
+// 	if err != nil {
+// 		return err
+// 	}
+// 	go func() {
+// 		for {
+// 			in, err := subc.Recv()
+// 			if err != nil {
+// 				log.Error(err)
+// 				return
+// 			}
+// 			fmt.Println("subc.Recv: ", in.Topic)
+// 		}
+// 	}()
+// 	return nil
+// }
+
 func (c *GRPCClient) Connect() error {
-	if session.SessionStat(atomic.LoadInt32((*int32)(&c.status))) == session.SessionStatConnected {
+	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) == transport.Connected {
 		return nil
 	}
-
 	md := metadata.New(map[string]string{"nodeid": c.NodeID, "nodename": c.NodeName})
 	ctx := metadata.NewOutgoingContext(context.Background(), md)
-	proxyc, err := gwProto.NewGatewayClient(c.Conn).Proxy(ctx)
+	c.GetewayClient = gwProto.NewGatewayClient(c.GrpcConn)
+	proxyc, err := c.GetewayClient.Proxy(ctx)
 	if err != nil {
 		return err
 	}
 	c.proxyc = proxyc
 	go func() {
-		c.OnConnStatus(session.SessionStatConnected)
-		defer c.OnConnStatus(session.SessionStatDisconnected)
+		c.OnConnStatus(transport.Connected)
+		defer c.OnConnStatus(transport.Disconnected)
 		var recvErr error
 		for {
 			in, err := proxyc.Recv()
@@ -73,8 +146,9 @@ func (c *GRPCClient) Connect() error {
 				recvErr = err
 				break
 			}
-			if c.OnMessage != nil {
-				c.OnMessage(c, in)
+			log.Info("gate-client-Recv: ", in.Name)
+			if c.OnUserMessageFunc != nil {
+				c.OnUserMessageFunc(&UserSession{SocketID: in.FromSocketid, UID: in.FromUid, client: c}, in)
 			}
 		}
 		log.Error("connect dist error: ", recvErr)
@@ -82,20 +156,10 @@ func (c *GRPCClient) Connect() error {
 	return nil
 }
 
-func (c *GRPCClient) Send(uid int64, msg proto.Message) error {
-	if session.SessionStat(atomic.LoadInt32((*int32)(&c.status))) != session.SessionStatConnected {
+func (c *GRPCClient) SendMessage(warp *gwProto.ToClientMessage) error {
+	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) != transport.Connected {
 		return io.EOF
 	}
-
-	data, err := proto.Marshal(msg)
-	if err != nil {
-		return err
-	}
-
-	warp := gwProto.ToClientMessage{
-		Uid:  uid,
-		Name: string(proto.MessageName(msg)),
-		Data: data,
-	}
-	return c.proxyc.Send(&warp)
+	log.Info("gate-client-Send: ", warp.Name)
+	return c.proxyc.Send(warp)
 }

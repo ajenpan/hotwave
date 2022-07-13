@@ -10,7 +10,14 @@ enum MessageType {
   Response = 2;
 }
 
-message ClientMessage {
+message GateMessage {
+  string name = 1;
+  bytes body = 2;
+  int64 msgid = 3;
+  string nodeid = 5;
+}
+
+message GateClientMessage {
   string name = 1;
   bytes body = 2;
   int64 msgid = 3;
@@ -21,7 +28,7 @@ message ClientMessage {
   }
 }
 
-message ServerMessage {
+message GateServerMessage {
   string name = 1;
   bytes body = 2;
   int32 errcode = 3;
@@ -53,7 +60,7 @@ message SessionInfo {
   string sessionid = 2;
 }
 
-message LoginRequest {
+message LoginGateRequest {
   oneof checker {
     AccountInfo account = 1;
     SessionInfo session = 2;
@@ -61,7 +68,7 @@ message LoginRequest {
   }
 }
 
-message LoginResponse {
+message LoginGateResponse {
   enum Flag {
     Success = 0;
     UnknowError = 1;

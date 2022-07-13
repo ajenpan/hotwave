@@ -1,5 +1,5 @@
 package games
 
-import "hotwave/services/battle"
+import "hotwave/service/battle"
 
 type Game = battle.GameLogic

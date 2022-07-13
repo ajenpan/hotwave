@@ -60,11 +60,11 @@ const (
 	PacketTypeStatAt_   PacketType = iota
 	PacketTypeHeartbeat PacketType = iota
 	PacketTypeAck       PacketType = iota
-	PacketTypeEcho      PacketType = iota
+	PacketTypePing      PacketType = iota
+	PacketTypePong      PacketType = iota
 	PacketTypePacket    PacketType = iota
 	PacketTypeError     PacketType = iota
 	PacketTypeEndAt_    PacketType = iota
-	// ... custom packet type
 )
 
 type PacketHead struct {

@@ -4,8 +4,8 @@ import (
 	"math/rand"
 	"testing"
 
-	"hotwave/services/battle"
-	"hotwave/services/battle/noop"
+	"hotwave/service/battle"
+	"hotwave/service/battle/noop"
 )
 
 func createTestLogic() (battle.GameLogic, error) {

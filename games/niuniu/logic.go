@@ -11,7 +11,7 @@ import (
 	protobuf "google.golang.org/protobuf/proto"
 
 	pb "hotwave/games/niuniu/proto"
-	"hotwave/services/battle"
+	"hotwave/service/battle"
 )
 
 func CreateLogic() battle.GameLogic {
@@ -44,7 +44,7 @@ func ParseConfig(raw []byte) (*Config, error) {
 }
 
 type Logic struct {
-	desk    battle.GameDesk
+	desk    battle.GameTable
 	info    *pb.GameInfo
 	conf    *Config
 	log     *logrus.Logger
@@ -54,7 +54,7 @@ type Logic struct {
 	stageTime time.Duration
 }
 
-func (nn *Logic) OnInit(d battle.GameDesk, conf interface{}) error {
+func (nn *Logic) OnInit(d battle.GameTable, conf interface{}) error {
 	switch v := conf.(type) {
 	case []byte:
 		var err error

@@ -15,12 +15,15 @@ import (
 	"hotwave/service/auth/store/cache"
 	"hotwave/service/auth/store/models"
 	"hotwave/service/common"
+	gwclient "hotwave/service/gateway/client"
+	"hotwave/utils/calltable"
 )
 
 type AuthOptions struct {
 	PK    *rsa.PrivateKey
 	DB    *gorm.DB
 	Cache cache.AuthCache
+	CT    *calltable.CallTable
 }
 
 func NewAuth(opts AuthOptions) *Auth {
@@ -32,6 +35,8 @@ func NewAuth(opts AuthOptions) *Auth {
 
 type Auth struct {
 	AuthOptions
+
+	Client *gwclient.GRPCClient
 }
 
 func (*Auth) Captcha(ctx context.Context, in *proto.CaptchaRequest) (*proto.CaptchaResponse, error) {
@@ -61,7 +66,8 @@ func (h *Auth) Login(ctx context.Context, in *proto.LoginRequest) (*proto.LoginR
 
 	res := h.DB.Limit(1).Find(user, user)
 	if err := res.Error; err != nil {
-		log.Error(err)
+		out.Flag = proto.LoginResponse_FAIL
+		out.Msg = "user not found"
 		return nil, fmt.Errorf("server internal error")
 	}
 

@@ -6,11 +6,11 @@ import (
 	"google.golang.org/protobuf/reflect/protoreflect"
 
 	protocal "hotwave/service/gateway/proto"
-	"hotwave/session"
+	"hotwave/transport"
 )
 
 type Recipient interface {
-	OnMessage(s session.Session, msg *protocal.ClientMessage) error
+	OnMessage(s transport.Session, msg *protocal.GateClientMessage) error
 }
 
 func NewStaticRouter() *StaticRouter {
@@ -30,14 +30,14 @@ func (r *StaticRouter) Add(name, nodeid string, d Recipient) {
 	r.Servers[name] = d
 }
 
-func (s *StaticRouter) OnRouteMessage(sess session.Session, msg *protocal.ClientMessage) {
+func (s *StaticRouter) OnRouteMessage(sess transport.Session, msg *protocal.GateClientMessage) {
 	name := protoreflect.FullName(msg.Name)
 	server := string(name.Parent())
 
 	var d Recipient = s.Servers[server]
 
 	switch endpoint := msg.Endpoint.(type) {
-	case *protocal.ClientMessage_Nodeid:
+	case *protocal.GateClientMessage_Nodeid:
 		d = s.Nodes[endpoint.Nodeid]
 	}
 

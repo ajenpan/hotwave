@@ -23,10 +23,7 @@ func GRPCClient() {
 	client := gwClient.GRPCClient{
 		NodeID:   "node1",
 		NodeName: "node1",
-		Conn:     conn,
-		OnMessage: func(c *gwClient.GRPCClient, msg *gwProto.ToServerMessage) {
-			log.Info("msg", msg)
-		},
+		GrpcConn: conn,
 	}
 	err = client.Connect()
 	if err != nil {
@@ -43,7 +40,7 @@ func GRPCClient() {
 	go func() {
 		return
 		for {
-			err := client.Send(1, &gwProto.ClientMessage{})
+			err := client.SendMessage(&gwProto.ToClientMessage{})
 			if err != nil {
 				log.Error(err)
 			}

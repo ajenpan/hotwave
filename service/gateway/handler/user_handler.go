@@ -3,40 +3,47 @@ package handler
 import (
 	"github.com/google/uuid"
 
+	"hotwave/node"
 	"hotwave/service/gateway/auth"
 	protocal "hotwave/service/gateway/proto"
-	"hotwave/transport/tcp"
+	"hotwave/transport"
 )
 
-func (g *Gateway) OnLoginRequestV1(socket *tcp.Socket, in *protocal.LoginRequest) {
-	var user *auth.UserSession
+func (g *Gateway) OnLoginGateRequest(socket transport.Session, in *protocal.LoginGateRequest) error {
+	var user *auth.UserInfo
 	switch c := in.Checker.(type) {
-	case *protocal.LoginRequest_Account:
-		user = g.Authc.AccountAuth(c.Account.Account, c.Account.Passwd)
-	case *protocal.LoginRequest_Session:
-		// user = g.authc.SeesionLogin(c.Session.Account, c.Session.Session)
-	case *protocal.LoginRequest_Jwt:
+	case *protocal.LoginGateRequest_Account:
+		// user = g.Authc.AccountAuth(c.Account.Account, c.Account.Passwd)
+	case *protocal.LoginGateRequest_Session:
+	case *protocal.LoginGateRequest_Jwt:
 		user = g.Authc.TokenAuth(c.Jwt)
 	}
 
+	out := &protocal.LoginGateResponse{}
+
 	if user == nil {
-		return
+		out.Flag = protocal.LoginGateResponse_UnknowError
+		return socket.Send(out)
 	}
 
-	user.Socket = socket
-	socket.Meta.Store("user", user)
+	socket.MetaStore("userinfo", user)
+	g.users.Store(user.Uid, user)
 
-	g.users.Store(user.UID(), user)
+	out.Sessionid = uuid.NewString()
 
-	out := &protocal.LoginResponse{
-		Sessionid: uuid.NewString(),
-	}
-	user.SendPB(out)
+	g.pushishEvent(&protocal.UserConnect{
+		Uid: user.Uid,
+	})
+	return socket.Send(out)
 }
 
-func (g *Gateway) OnEcho(socket *auth.UserSession, in *protocal.EchoRequest) {
+func (g *Gateway) OnEchoRequest(socket transport.Session, in *protocal.EchoRequest) error {
 	out := &protocal.EchoResponse{
 		Data: in.Data,
 	}
-	socket.Send(out)
+	return socket.Send(out)
+}
+
+func (g *Gateway) OnGateAccept(socket node.Socket) {
+	//TODO:
 }

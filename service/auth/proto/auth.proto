@@ -7,13 +7,17 @@ option go_package = "./service/auth/proto;proto";
 service Auth {
   rpc Captcha(CaptchaRequest) returns (CaptchaResponse) {}
   rpc Login(LoginRequest) returns (LoginResponse) {}
+  rpc AnonymousLogin(AnonymousLoginRequest) returns (LoginResponse) {}
   rpc Logout(LogoutRequest) returns (LogoutResponse) {}
   rpc RefreshToken(RefreshTokenRequest) returns (RefreshTokenResponse) {}
   rpc UserInfo(UserInfoRequest) returns (UserInfoResponse) {}
   rpc Register(RegisterRequest) returns (RegisterResponse) {}
+  rpc ModifyPasswd(ModifyPasswdRequest) returns (ModifyPasswdResponse) {}
 }
 
-message CaptchaRequest { string captcha_type = 1; }
+message CaptchaRequest {
+  string captcha_type = 1;
+}
 
 message CaptchaResponse {
   string captcha_id = 1;
@@ -60,14 +64,18 @@ message LoginResponse {
 
 message LogoutRequest {}
 
-message LogoutResponse { string msg = 1; }
+message LogoutResponse {
+  string msg = 1;
+}
 
 message RefreshTokenRequest {
   string access_token = 1;
   string refresh_token = 2;
 }
 
-message RefreshTokenResponse { string access_token = 1; }
+message RefreshTokenResponse {
+  string access_token = 1;
+}
 
 message RegisterRequest {
   string uname = 1;
@@ -78,16 +86,26 @@ message RegisterRequest {
   // CaptchaVerify captcha_verify = 5;
 }
 
-message RegisterResponse { string msg = 1; }
+message RegisterResponse {
+  string msg = 1;
+}
 
 // verify
-message UserInfoRequest { string access_token = 1; }
-message UserInfoResponse { UserInfo info = 1; }
+message UserInfoRequest {
+  string access_token = 1;
+}
+message UserInfoResponse {
+  UserInfo info = 1;
+}
 
 // change user's passwd
-message UpdatePasswdRequest {}
-message UpdatePasswdResponse {}
+message ModifyPasswdRequest {}
+message ModifyPasswdResponse {}
 
 // reset user's passwd if forgot
 message ResetPasswdRequest {}
 message ResetPasswdResponse {}
+
+message AnonymousLoginRequest {
+  string identify_code = 1;
+}

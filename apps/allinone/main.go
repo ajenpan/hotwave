@@ -12,11 +12,14 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
+	"hotwave/event"
+	evProto "hotwave/event/proto"
 	log "hotwave/logger"
 	gwAuth "hotwave/service/gateway/auth"
 	gwHandler "hotwave/service/gateway/handler"
 	gwProto "hotwave/service/gateway/proto"
 	tcpGate "hotwave/transport/tcp"
+	"hotwave/utils/calltable"
 	"hotwave/utils/rsagen"
 	utilSignal "hotwave/utils/signal"
 )
@@ -69,7 +72,7 @@ func main() {
 		}, &cli.StringFlag{
 			Name:        "listen",
 			Aliases:     []string{"l"},
-			Value:       ":10010",
+			Value:       ":10110",
 			Destination: &ListenAddr,
 		}, &cli.BoolFlag{
 			Name:        "print-config",
@@ -108,27 +111,28 @@ func RealMain(c *cli.Context) error {
 		panic(err)
 	}
 
-	gw := &gwHandler.Gateway{
-		Authc: &gwAuth.LocalAuth{
-			PK: &PK.PublicKey,
-		},
-	}
-
-	// ct := calltable.ExtractProtoFile(gwProto.File_service_gateway_proto_gateway_proto, gw)
-	// router := gwRouter.NewStaticRouter()
-	// router.Add("gateway", "gateway", &gwRouter.HandleDeliver{
-	// 	H:       gw,
-	// 	SvrName: "gateway",
-	// 	NodeId:  "gateway",
-	// 	CT:      ct,
-	// })
-
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 10000))
+	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 20000))
 	if err != nil {
 		panic(err)
 	}
 	grpcs := grpc.NewServer()
+
+	publisher := &event.GrpcEventPublisher{}
+	evProto.RegisterEventServer(grpcs, publisher)
+
+	gw := &gwHandler.Gateway{
+		Authc: &gwAuth.LocalAuth{
+			PK: &PK.PublicKey,
+		},
+		Publisher: publisher,
+	}
+	gw.AddAllowlistByMsg(&gwProto.LoginGateRequest{})
+
 	gwProto.RegisterGatewayServer(grpcs, gw)
+
+	ct := calltable.ExtractAsyncMethod(gwProto.File_service_gateway_proto_client_proto.Messages(), gw)
+
+	gw.CT = ct
 
 	go func() {
 		err = grpcs.Serve(lis)
@@ -140,7 +144,7 @@ func RealMain(c *cli.Context) error {
 
 	gate := tcpGate.NewServer(tcpGate.ServerOptions{
 		Address:   ":10010",
-		OnMessage: gw.OnClientMessage,
+		OnMessage: gw.OnGateMessage,
 		OnConn:    gw.OnClientConnStat,
 	})
 

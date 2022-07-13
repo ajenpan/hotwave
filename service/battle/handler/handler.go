@@ -33,26 +33,20 @@ func New() *Handler {
 
 func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleRequest) (*proto.CreateBattleResponse, error) {
 	out := &proto.CreateBattleResponse{}
-
 	// first get game logic
 	// var creator battle.GameLogicCreator
-
-	logic, err := h.LogicCreator.CreateLogic(in.GameName, in.GameConf)
+	logic, err := h.LogicCreator.CreateLogic(in.GameName)
 	if err != nil {
 		return nil, err
 	}
-
-	if err != nil {
+	d := table.NewTable(in.BattleConf)
+	if err = logic.OnInit(d, in.GameConf); err != nil {
 		return out, err
 	}
-
-	// in.GameName
-	d := table.NewTable(in.BattleConf)
 
 	d.Start(logic)
 
 	h.desks.Store(d.ID, d)
-
 	out.BattleId = d.ID
 	return out, nil
 }
