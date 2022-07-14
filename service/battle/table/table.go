@@ -1,13 +1,14 @@
 package table
 
 import (
-	"context"
 	"sync"
 	"time"
 
 	"github.com/google/uuid"
 	"google.golang.org/protobuf/proto"
 
+	"hotwave/event"
+	evproto "hotwave/event/proto"
 	log "hotwave/logger"
 	"hotwave/service/battle"
 	pb "hotwave/service/battle/proto"
@@ -46,9 +47,11 @@ type Table struct {
 	action chan func()
 
 	ticker *time.Ticker
+
+	publisher event.Publisher
 }
 
-func (d *Table) Start(l battle.GameLogic) error {
+func (d *Table) Start(logic battle.GameLogic) error {
 	d.rwlock.Lock()
 	defer d.rwlock.Unlock()
 
@@ -56,18 +59,25 @@ func (d *Table) Start(l battle.GameLogic) error {
 		d.logic.OnReset()
 	}
 
-	d.logic = l
+	d.logic = logic
+
+	go func(jobque chan func()) {
+
+		for job := range jobque {
+			job()
+		}
+
+	}(d.action)
 
 	if d.ticker != nil {
 		d.ticker.Stop()
 	}
 
 	d.ticker = time.NewTicker(1 * time.Second)
-
-	go func() {
+	go func(ticker *time.Ticker) {
 		latest := time.Now()
-		for range d.ticker.C {
-			now := time.Now()
+		for now := range ticker.C {
+			// now := time.Now()
 			sub := now.Sub(latest)
 			latest = now
 
@@ -77,7 +87,7 @@ func (d *Table) Start(l battle.GameLogic) error {
 				}
 			}
 		}
-	}()
+	}(d.ticker)
 
 	return nil
 }
@@ -113,7 +123,17 @@ func (d *Table) BroadcastMessage(msg proto.Message) {
 }
 
 func (d *Table) PublishEvent(event proto.Message) {
+	if d.publisher == nil {
+		return
+	}
+
 	//TODO:
+
+	warp := &evproto.EventMessage{
+		Topic:     string(proto.MessageName(event)),
+		Timestamp: time.Now().Unix(),
+	}
+	d.publisher.Publish(warp)
 }
 
 func (d *Table) ReportGameStart() {
@@ -137,14 +157,14 @@ func (d *Table) getPlayer(uid int64) *player {
 	return nil
 }
 
-func (d *Table) OnBattleMessage(ctx context.Context, fmsg *pb.BattleMessageWrap) {
+func (d *Table) OnPlayerMessage(uid int64, topic string, iraw []byte) {
 	// here is not safe
-	msg := proto.Clone(fmsg).(*pb.BattleMessageWrap)
+	// msg := proto.Clone(fmsg).(*pb.BattleMessageWrap)
 
 	d.action <- func() {
-		p := d.getPlayer(msg.Uid)
+		p := d.getPlayer(uid)
 		if p != nil && d.logic != nil {
-			d.logic.OnMessage(p, msg.Topic, msg.Data)
+			d.logic.OnMessage(p, topic, iraw)
 		}
 	}
 }

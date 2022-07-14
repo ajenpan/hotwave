@@ -7,16 +7,18 @@ import (
 
 	protobuf "google.golang.org/protobuf/proto"
 
-	logger "hotwave/logger"
 	"hotwave/marshal"
 	"hotwave/service/battle"
 	"hotwave/service/battle/proto"
 	"hotwave/service/battle/table"
+	"hotwave/transport"
 	"hotwave/utils/calltable"
 )
 
 type Handler struct {
-	desks        sync.Map
+	battles sync.Map
+	users   sync.Map
+
 	LogicCreator *battle.GameLogicCreator
 
 	CT        *calltable.CallTable
@@ -46,18 +48,14 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleReques
 
 	d.Start(logic)
 
-	h.desks.Store(d.ID, d)
+	h.battles.Store(d.ID, d)
 	out.BattleId = d.ID
 	return out, nil
 }
 
-func (h *Handler) PlayerJoinBattle(ctx context.Context, in *proto.EmptyMessage) {
-
-}
-
 func (h *Handler) WatcherJoinBattle(ctx context.Context, in *proto.WatcherJoinBattleRequest) (*proto.WatcherJoinBattleResponse, error) {
 	out := &proto.WatcherJoinBattleResponse{}
-	d := h.getDesk(in.BattleId)
+	d := h.geBattleById(in.BattleId)
 	if d == nil {
 		return out, fmt.Errorf("battle not found")
 	}
@@ -70,49 +68,27 @@ func (h *Handler) OnEvent(topc string, msg protobuf.Message) {
 
 }
 
-func (h *Handler) OnUserConnStat() {
+func (h *Handler) OnUserConnStat(uid int64, ss transport.SessionStat) {
 
 }
 
-func (h *Handler) OnUserMessage(uid int64, topic string, raw []byte) {
-	logger.Info("UserMessage", uid, topic)
-
-	method := h.CT.Get(topic)
-	if method == nil {
+func (h *Handler) OnBattleMessage(uid int64, msg *proto.BattleMessageWrap) {
+	b := h.geBattleById(msg.BattleId)
+	if b == nil {
 		return
 	}
+	b.OnPlayerMessage(msg.Uid, msg.Topic, msg.Data)
 }
 
-func (h *Handler) OnBattleMessage(ctx context.Context, in *proto.BattleMessageWrap) {
-	d := h.getDesk(in.BattleId)
-	if d == nil {
-		logger.Error("desk not found battleid")
-		return
+func (h *Handler) geBattleById(battleId string) *table.Table {
+	if raw, ok := h.battles.Load(battleId); ok {
+		return raw.(*table.Table)
 	}
-	d.OnBattleMessage(ctx, in)
+	return nil
 }
 
-// func (h *Handler) BattleMessage(ctx context.Context, stream proto.Battle_BattleMessageStream) error {
-// 	defer stream.Close()
-// 	for {
-// 		in, err := stream.Recv()
-// 		if err == io.EOF {
-// 			break
-// 		}
-// 		if err != nil {
-// 			return err
-// 		}
-// 		d := h.getDesk(in.BattleId)
-// 		if d == nil {
-// 			return fmt.Errorf("desk not found battleid")
-// 		}
-// 		d.OnBattleMessage(ctx, in)
-// 	}
-// 	return nil
-// }
-
-func (h *Handler) getDesk(battleId string) *table.Table {
-	if raw, ok := h.desks.Load(battleId); ok {
+func (h *Handler) geBattleByUid(uid int64) *table.Table {
+	if raw, ok := h.users.Load(uid); ok {
 		return raw.(*table.Table)
 	}
 	return nil

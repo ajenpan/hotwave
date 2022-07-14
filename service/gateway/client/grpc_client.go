@@ -93,37 +93,6 @@ func (s *GRPCClient) Reconnect() {
 	}
 }
 
-// func (c *GRPCClient) SubUserEvent() error {
-// 	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) == transport.Connected {
-// 		return nil
-// 	}
-// 	md := metadata.New(map[string]string{"nodeid": c.NodeID, "nodename": c.NodeName})
-// 	ctx := metadata.NewOutgoingContext(context.Background(), md)
-// 	disconn := &gwProto.UserDisconnect{}
-// 	conn := &gwProto.UserConnect{}
-// 	req := &evProto.SubscribeRequest{
-// 		Topics: []string{
-// 			string(proto.MessageName(disconn)),
-// 			string(proto.MessageName(conn)),
-// 		},
-// 	}
-// 	subc, err := evProto.NewEventClient(c.Conn).Subscribe(ctx, req)
-// 	if err != nil {
-// 		return err
-// 	}
-// 	go func() {
-// 		for {
-// 			in, err := subc.Recv()
-// 			if err != nil {
-// 				log.Error(err)
-// 				return
-// 			}
-// 			fmt.Println("subc.Recv: ", in.Topic)
-// 		}
-// 	}()
-// 	return nil
-// }
-
 func (c *GRPCClient) Connect() error {
 	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) == transport.Connected {
 		return nil

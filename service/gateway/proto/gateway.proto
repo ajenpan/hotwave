@@ -14,7 +14,7 @@ message ToClientMessage {
   string name = 1;
   bytes data = 2;
   int64 to_uid = 3;
-  string to_socketid = 4;
+  string to_socketid = 4;  
 }
 
 message ToServerMessage {

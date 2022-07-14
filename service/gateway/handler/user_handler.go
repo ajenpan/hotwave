@@ -3,7 +3,6 @@ package handler
 import (
 	"github.com/google/uuid"
 
-	"hotwave/node"
 	"hotwave/service/gateway/auth"
 	protocal "hotwave/service/gateway/proto"
 	"hotwave/transport"
@@ -42,8 +41,4 @@ func (g *Gateway) OnEchoRequest(socket transport.Session, in *protocal.EchoReque
 		Data: in.Data,
 	}
 	return socket.Send(out)
-}
-
-func (g *Gateway) OnGateAccept(socket node.Socket) {
-	//TODO:
 }
