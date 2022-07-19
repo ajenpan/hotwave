@@ -9,32 +9,18 @@ enum MessageType {
   Request = 1;
   Response = 2;
 }
+enum MIMEType { Protobuf = 0; }
 
 message GateMessage {
   string name = 1;
+  // int64 msgid = 2;
+  // string mime = 2; // body mime type
   bytes body = 2;
-  int64 msgid = 3;
+  MIMEType mime = 3;
+  MessageType type = 4;
+  
   string nodeid = 5;
-}
-
-message GateClientMessage {
-  string name = 1;
-  bytes body = 2;
-  int64 msgid = 3;
-  MessageType msgtype = 4;
-  oneof endpoint {
-    string nodeid = 5;
-    string server = 6;
-  }
-}
-
-message GateServerMessage {
-  string name = 1;
-  bytes body = 2;
-  int32 errcode = 3;
-  MessageType msgtype = 4;
-  string errmsg = 5;
-  int64 msgid = 6;
+  string server = 6;
 }
 
 message CaptchaQuestion {

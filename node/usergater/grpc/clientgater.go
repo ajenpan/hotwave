@@ -39,9 +39,11 @@ func (c *ClientGate) Close() {
 func (c *ClientGate) ID() string {
 	return c.NodeID
 }
+
 func (c *ClientGate) LocalAddr() string {
 	return ""
 }
+
 func (c *ClientGate) RemoteAddr() string {
 	return ""
 }
@@ -92,21 +94,23 @@ func (c *ClientGate) Connect() error {
 				recvErr = err
 				break
 			}
-			log.Info("gate-client-Recv: ", in.Name)
-			if c.OnUserMessageFunc != nil {
-				c.OnUserMessageFunc(&UserSocket{RemoteSocketID: in.FromSocketid, UID: in.FromUid, client: c}, in)
-			}
+
+			c.onMessage(in)
 		}
 		log.Error("connect dist error: ", recvErr)
 	}()
 	return nil
 }
 
-func (c *ClientGate) OnMessage() {
-	log.Info("grpc-client-OnMessage")
+func (c *ClientGate) onMessage(in *gwProto.ToServerMessage) {
+	log.Info("gate-client-Recv: ", in.Name)
+
+	if c.OnUserMessageFunc != nil {
+		c.OnUserMessageFunc(&UserSocket{RemoteSocketID: in.FromSocketid, UID: in.FromUid, client: c}, in)
+	}
 }
 
-func (c *ClientGate) SendMessage(warp *gwProto.ToClientMessage) error {
+func (c *ClientGate) sendMessage(warp *gwProto.ToClientMessage) error {
 	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) != transport.Connected {
 		return io.EOF
 	}

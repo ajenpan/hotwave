@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package games.niuniu;
 
-option go_package = "games/niuniu/proto;proto";
+option go_package = "./game/niuniu;niuniu";
 
 // 牌型类型
 enum CardType {
@@ -32,8 +32,8 @@ enum GameStep {
   BET = 6;           // 下注
   DEAL_CARDS = 7;    // 发牌
   SHOW_CARDS = 8;    // 亮牌
-  OVER = 9;          // 游戏结束
-  TALLY = 10;        // 游戏结算
+  TALLY = 9;         // 游戏结算
+  OVER = 10;         // 游戏结束
 }
 
 message OutCardInfo {
@@ -67,7 +67,7 @@ message GameDeskInfoResponse {
 
 message GameStatusNotify {
   GameStep game_status = 1; // 游戏状态
-  int32 time_down = 3;          // 倒计时
+  int32 time_down = 3;      // 倒计时
 }
 
 // 用户请求抢庄

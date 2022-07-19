@@ -130,7 +130,7 @@ func RealMain(c *cli.Context) error {
 
 	gwProto.RegisterGatewayServer(grpcs, gw)
 
-	ct := calltable.ExtractAsyncMethod(gwProto.File_service_gateway_proto_client_proto.Messages(), gw)
+	ct := calltable.ExtractAsyncMethod(gwProto.File_client_proto.Messages(), gw)
 
 	gw.CT = ct
 

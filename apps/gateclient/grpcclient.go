@@ -22,7 +22,7 @@ func GRPCClient() {
 
 	client := gwClient.GRPCClient{
 		NodeID:   "node1",
-		NodeName: "node1",
+		NodeType: "node1",
 		GrpcConn: conn,
 	}
 	err = client.Connect()

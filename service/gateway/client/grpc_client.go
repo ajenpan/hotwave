@@ -22,7 +22,6 @@ type UserSession struct {
 }
 
 func (s *UserSession) Send(msg proto.Message) error {
-
 	data, err := proto.Marshal(msg)
 	if err != nil {
 		return err
@@ -41,7 +40,7 @@ type GRPCClient struct {
 	transport.SyncMapSocketMeta
 
 	NodeID        string
-	NodeName      string
+	NodeType      string
 	GrpcConn      *grpc.ClientConn
 	GetewayClient gwProto.GatewayClient
 	proxyc        gwProto.Gateway_ProxyClient
@@ -72,12 +71,6 @@ func (c *GRPCClient) RemoteAddr() string {
 func (c *GRPCClient) OnConnStatus(ss transport.SessionStat) {
 	atomic.SwapInt32((*int32)(&c.status), int32(ss))
 	log.Info("grpc-client-OnConnStatus", ss)
-	// switch ss {
-	// case transport.Connected:
-	// case transport.Disconnected:
-	// 	go c.Reconnect()
-	// default:
-	// }
 
 	if c.OnConnStatusFunc != nil {
 		c.OnConnStatusFunc(c, ss)
@@ -97,7 +90,7 @@ func (c *GRPCClient) Connect() error {
 	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) == transport.Connected {
 		return nil
 	}
-	md := metadata.New(map[string]string{"nodeid": c.NodeID, "nodename": c.NodeName})
+	md := metadata.New(map[string]string{"nodeid": c.NodeID, "nodename": c.NodeType})
 	ctx := metadata.NewOutgoingContext(context.Background(), md)
 	c.GetewayClient = gwProto.NewGatewayClient(c.GrpcConn)
 	proxyc, err := c.GetewayClient.Proxy(ctx)

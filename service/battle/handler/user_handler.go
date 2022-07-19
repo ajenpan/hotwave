@@ -9,10 +9,9 @@ import (
 func (a *Handler) OnUserMessage(s *gwclient.UserSession, msg *gwproto.ToServerMessage) {
 	log.Info("UserMessage", s.UID, msg.Name)
 
+	// ProtoMarshaler
 	itable := a.geBattleByUid(s.UID)
-	if itable == nil {
-		return
+	if itable != nil {
+		itable.OnPlayerMessage(s.UID, msg.Name, msg.Data)
 	}
-
-	itable.OnPlayerMessage(s.UID, msg.Name, msg.Data)
 }

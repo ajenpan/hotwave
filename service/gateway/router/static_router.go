@@ -10,7 +10,7 @@ import (
 )
 
 type Recipient interface {
-	OnMessage(s transport.Session, msg *protocal.GateClientMessage) error
+	OnMessage(s transport.Session, msg *protocal.GateMessage) error
 }
 
 func NewStaticRouter() *StaticRouter {
@@ -30,15 +30,16 @@ func (r *StaticRouter) Add(name, nodeid string, d Recipient) {
 	r.Servers[name] = d
 }
 
-func (s *StaticRouter) OnRouteMessage(sess transport.Session, msg *protocal.GateClientMessage) {
+func (s *StaticRouter) OnRouteMessage(sess transport.Session, msg *protocal.GateMessage) {
 	name := protoreflect.FullName(msg.Name)
 	server := string(name.Parent())
 
-	var d Recipient = s.Servers[server]
+	var d Recipient
 
-	switch endpoint := msg.Endpoint.(type) {
-	case *protocal.GateClientMessage_Nodeid:
-		d = s.Nodes[endpoint.Nodeid]
+	if msg.Nodeid != "" {
+		d = s.Nodes[msg.Nodeid]
+	} else {
+		d = s.Servers[server]
 	}
 
 	if d == nil {

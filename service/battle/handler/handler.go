@@ -7,6 +7,7 @@ import (
 
 	protobuf "google.golang.org/protobuf/proto"
 
+	"hotwave/event"
 	"hotwave/marshal"
 	"hotwave/service/battle"
 	"hotwave/service/battle/proto"
@@ -23,6 +24,8 @@ type Handler struct {
 
 	CT        *calltable.CallTable
 	marshaler *marshal.ProtoMarshaler
+
+	Publisher event.Publisher
 }
 
 func New() *Handler {
@@ -30,26 +33,68 @@ func New() *Handler {
 		LogicCreator: &battle.GameLogicCreator{},
 		marshaler:    &marshal.ProtoMarshaler{},
 	}
+
+	ct := calltable.ExtractParseGRpcMethod(proto.File_battle_server_proto.Services(), h)
+
+	h.CT = ct
 	return h
 }
 
 func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleRequest) (*proto.CreateBattleResponse, error) {
 	out := &proto.CreateBattleResponse{}
-	// first get game logic
-	// var creator battle.GameLogicCreator
+
+	if len(in.PlayerInfos) == 0 {
+		return nil, fmt.Errorf("player info is empty")
+	}
+
 	logic, err := h.LogicCreator.CreateLogic(in.GameName)
 	if err != nil {
 		return nil, err
 	}
-	d := table.NewTable(in.BattleConf)
-	if err = logic.OnInit(d, in.GameConf); err != nil {
-		return out, err
+
+	d := table.NewTable(table.TableOption{
+		Conf:      in.BattleConf,
+		Publisher: h.Publisher,
+	})
+
+	players, err := table.NewPlayers(in.PlayerInfos)
+	if err != nil {
+		return nil, err
 	}
 
-	d.Start(logic)
+	err = d.Init(logic, players, in.GameConf)
+	if err != nil {
+		return nil, err
+	}
 
-	h.battles.Store(d.ID, d)
+	_, exist := h.battles.LoadOrStore(d.ID, d)
+
+	if exist {
+		return out, fmt.Errorf("create failed")
+	}
 	out.BattleId = d.ID
+	return out, nil
+}
+
+func (h *Handler) StartBattle(ctx context.Context, in *proto.StartBattleRequest) (*proto.StartBattleResponse, error) {
+	out := &proto.StartBattleResponse{}
+
+	d := h.geBattleById(in.BattleId)
+	if d == nil {
+		return out, fmt.Errorf("battle not found")
+	}
+	d.Start()
+	return out, nil
+}
+
+func (h *Handler) StopBattle(ctx context.Context, in *proto.StopBattleRequest) (*proto.StopBattleResponse, error) {
+	out := &proto.StopBattleResponse{}
+
+	d := h.geBattleById(in.BattleId)
+	if d == nil {
+		return out, fmt.Errorf("battle not found")
+	}
+	d.Close()
 	return out, nil
 }
 

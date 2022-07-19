@@ -32,12 +32,15 @@ func TestTableTicker(t *testing.T) {
 		},
 	}
 
-	d := NewTable(&proto.BattleConfigure{})
-	if err := logic.OnInit(d, nil); err != nil {
+	d := NewTable(TableOption{
+		Conf: &proto.BattleConfigure{},
+	})
+
+	if err := logic.OnInit(d, nil, nil); err != nil {
 		t.Fatal(err)
 	}
-
-	err := d.Start(logic)
+	d.Init(logic, nil, nil)
+	err := d.Start()
 
 	if err != nil {
 		t.Fatal(err)

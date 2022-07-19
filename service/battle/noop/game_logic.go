@@ -15,9 +15,21 @@ func NewGameLogic() battle.GameLogic {
 type GameLogic struct {
 }
 
-func (gl *GameLogic) OnInit(desk battle.GameTable, conf interface{}) error { return nil }
-func (gl *GameLogic) OnStart(players []battle.Player) error                { return nil }
-func (gl *GameLogic) OnTick(time.Duration)                                 {}
-func (gl *GameLogic) OnReset()                                             {}
-func (gl *GameLogic) OnMessage(battle.Player, string, []byte)              {}
-func (gl *GameLogic) OnEvent(string, proto.Message)                        {}
+func (gl *GameLogic) OnInit(battle.GameTable, []battle.Player, interface{}) error {
+	return nil
+}
+func (gl *GameLogic) OnStart() error {
+	return nil
+}
+func (gl *GameLogic) OnTick(time.Duration) {
+
+}
+func (gl *GameLogic) OnReset() {
+
+}
+func (gl *GameLogic) OnMessage(battle.Player, string, []byte) {
+
+}
+func (gl *GameLogic) OnEvent(string, proto.Message) {
+
+}

@@ -1,4 +1,4 @@
-package games
+package game
 
 import "hotwave/service/battle"
 

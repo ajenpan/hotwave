@@ -22,3 +22,9 @@ func (c *GameLogicCreator) CreateLogic(name string) (GameLogic, error) {
 	creator := v.(func() GameLogic)
 	return creator(), nil
 }
+
+var LogicCreator = &GameLogicCreator{}
+
+func RegisterGame(name string, creator func() GameLogic) error {
+	return LogicCreator.Store(name, creator)
+}

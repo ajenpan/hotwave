@@ -19,7 +19,7 @@ func SendMsg(client *tcp.Client, msg proto.Message) {
 		return
 	}
 
-	warp := &gwproto.GateClientMessage{
+	warp := &gwproto.GateMessage{
 		Name: string(proto.MessageName(msg)),
 		Body: raw,
 	}
@@ -34,7 +34,7 @@ func SendMsg(client *tcp.Client, msg proto.Message) {
 	}
 }
 
-func RecvMsg[T any](recvchan chan *gwproto.GateServerMessage) (*T, error) {
+func RecvMsg[T any](recvchan chan *gwproto.GateMessage) (*T, error) {
 	t := new(T)
 	msg, ok := <-recvchan
 	if !ok {
@@ -48,11 +48,11 @@ func RecvMsg[T any](recvchan chan *gwproto.GateServerMessage) (*T, error) {
 }
 
 func TCPClient() {
-	recvchan := make(chan *gwproto.GateServerMessage, 10)
+	recvchan := make(chan *gwproto.GateMessage, 10)
 	client := tcp.NewClient(&tcp.ClientOptions{
 		RemoteAddress: "localhost:10010",
 		OnMessage: func(s *tcp.Client, p *tcp.Packet) {
-			warp := &gwproto.GateServerMessage{}
+			warp := &gwproto.GateMessage{}
 			if err := proto.Unmarshal(p.Raw, warp); err != nil {
 				log.Error(err)
 				return
@@ -92,7 +92,7 @@ func TCPClient() {
 		return
 	}
 
-	RecvMsg[gwproto.GateClientMessage](recvchan)
+	RecvMsg[gwproto.GateMessage](recvchan)
 
 	SendMsg(client, &gwproto.LoginGateRequest{
 		// Checker: &gwproto.LoginGateRequest_Account{

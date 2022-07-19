@@ -7,9 +7,15 @@ import (
 	"runtime"
 
 	"github.com/urfave/cli/v2"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials/insecure"
 
 	"hotwave/logger"
+	battleHandler "hotwave/service/battle/handler"
+	"hotwave/transport"
 	utilSignal "hotwave/utils/signal"
+
+	gwclient "hotwave/service/gateway/client"
 )
 
 var (
@@ -51,42 +57,28 @@ func Run() error {
 	app.Name = Name
 
 	app.Action = func(c *cli.Context) error {
+		h := battleHandler.New()
+		grpcConn, err := grpc.Dial("localhost:20000", grpc.WithTransportCredentials(insecure.NewCredentials()))
+		if err != nil {
+			panic(err)
+		}
 
-		// h := battleHandler.New()
+		gwc := &gwclient.GRPCClient{
+			GrpcConn: grpcConn,
+			NodeID:   "battle-1",
+			NodeType: "battle",
 
-		// svr := tcpsvr.NewServer(&tcpsvr.ServerOptions{
-		// 	Address: ":10010",
-		// 	OnConn: func(s *tcpsvr.Socket, ss tcpsvr.SocketStat) {
-		// 		logger.Infof("socket:%s conn:%s", s.ID(), tcpsvr.SocketStatString(ss))
-		// 	},
-		// 	OnMessage: func(s *tcpsvr.Socket, p *tcpsvr.Packet) {
-		// 		msg := &proto.BattleMessageWrap{}
-		// 		h.OnBattleMessage(context.Background(), msg)
-		// 	},
-		// })
+			OnConnStatusFunc: func(c *gwclient.GRPCClient, ss transport.SessionStat) {
+				if ss == transport.Connected {
+				} else {
+					go c.Reconnect()
+				}
+			},
+			OnUserMessageFunc: h.OnUserMessage,
+		}
 
-		// err := svr.Start()
-		// if err != nil {
-		// 	return err
-		// }
-		// defer svr.Stop()
-
-		// core := frame.New(
-		// 	frame.Name(Name),
-		// 	frame.Version(Version),
-		// 	frame.Address(":10010"),
-		// )
-
-		// h, err := handler.New(config.DefaultConf)
-		// if err != nil {
-		// 	panic(err)
-		// }
-		// reflection.Register(core.GrpcServer())
-		// if err := core.Start(); err != nil {
-		// 	return err
-		// }
-		// defer core.Stop()
-		// httpServer(h)
+		gwc.Reconnect()
+		defer gwc.Close()
 
 		s := utilSignal.WaitShutdown()
 		logger.Infof("recv signal: %v", s.String())

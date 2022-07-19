@@ -23,5 +23,5 @@ func (s *UserSocket) Send(msg *transport.Message) error {
 		Data:       data,
 	}
 
-	return s.client.SendMessage(warp)
+	return s.client.sendMessage(warp)
 }

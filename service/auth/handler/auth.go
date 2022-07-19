@@ -124,19 +124,12 @@ func (*Auth) RefreshToken(ctx context.Context, in *proto.RefreshTokenRequest) (*
 }
 
 func (h *Auth) UserInfo(ctx context.Context, in *proto.UserInfoRequest) (*proto.UserInfoResponse, error) {
-	uid, _, err := common.VerifyToken(&h.PK.PublicKey, in.AccessToken)
-	if err != nil {
-		return nil, err
-	}
-
-	user := h.Cache.FetchUser(ctx, uid)
-
+	user := h.Cache.FetchUser(ctx, in.Uid)
 	if user == nil {
+		//todo, find user from db
 		return nil, fmt.Errorf("user no found")
 	}
-
 	out := &proto.UserInfoResponse{}
-
 	out.Info = &proto.UserInfo{
 		Uid:     user.User.UID,
 		Uname:   user.User.Uname,

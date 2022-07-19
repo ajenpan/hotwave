@@ -17,7 +17,7 @@ type HandleDeliver struct {
 	CT      *calltable.CallTable
 }
 
-func (h *HandleDeliver) OnMessage(u transport.Session, msg *protocal.GateClientMessage) error {
+func (h *HandleDeliver) OnMessage(u transport.Session, msg *protocal.GateMessage) error {
 	method := h.CT.Get(msg.Name)
 	if method == nil {
 		return fmt.Errorf("method %s not found", msg.Name)
@@ -38,12 +38,11 @@ func (h *HandleDeliver) OnMessage(u transport.Session, msg *protocal.GateClientM
 	if !callResult[1].IsNil() {
 		callErr = callResult[1].Interface().(error)
 	}
-	wrap := &protocal.GateServerMessage{
+	wrap := &protocal.GateMessage{
 		Name: msg.Name,
 	}
 	if callResp != nil {
-		wrap.Errmsg = callErr.Error()
-		wrap.Errcode = -1
+		fmt.Println(callErr)
 	}
 	if callResp != nil {
 		wrap.Body, _ = proto.Marshal(callResp)

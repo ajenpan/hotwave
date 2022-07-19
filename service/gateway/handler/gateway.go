@@ -95,7 +95,7 @@ func (u *SocketSendWarper) SendPB(msg proto.Message) error {
 	if err != nil {
 		return err
 	}
-	wrap := &protocal.GateServerMessage{
+	wrap := &protocal.GateMessage{
 		Name: string(proto.MessageName(msg)),
 		Body: body,
 	}
@@ -137,7 +137,7 @@ func (g *Gateway) OnGateMessage(session transport.Session, iraw interface{}) {
 		session = wrap.(transport.Session)
 	}
 
-	msg := &protocal.GateClientMessage{}
+	msg := &protocal.GateMessage{}
 	err := proto.Unmarshal(raw, msg)
 	if err != nil {
 		return
@@ -167,6 +167,7 @@ func (g *Gateway) OnGateMessage(session transport.Session, iraw interface{}) {
 			}
 		}
 	} else {
+		//TODO:
 		s, has := g.Servers.Load(serverName)
 		if has {
 			s := s.(*grpcSvrSession)
@@ -197,7 +198,7 @@ func (g *Gateway) OnRouteMessage(s transport.Session, msg *protocal.ToClientMess
 		return
 	}
 
-	wrap := &protocal.GateServerMessage{
+	wrap := &protocal.GateMessage{
 		Name: msg.Name,
 		Body: msg.Data,
 	}

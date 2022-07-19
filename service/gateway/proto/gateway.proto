@@ -4,6 +4,8 @@ package gateway;
 
 option go_package = "./service/gateway/proto;proto";
 
+import "client.proto";
+
 service Gateway {
   rpc Proxy(stream ToClientMessage) returns (stream ToServerMessage) {}
 
@@ -13,15 +15,23 @@ service Gateway {
 message ToClientMessage {
   string name = 1;
   bytes data = 2;
+
   int64 to_uid = 3;
-  string to_socketid = 4;  
+  string to_socketid = 4;
+
+  MIMEType mime = 5;
+  MessageType type = 6;
 }
 
 message ToServerMessage {
   string name = 1;
   bytes data = 2;
+
   int64 from_uid = 3;
   string from_socketid = 4;
+
+  MIMEType mime = 5;
+  MessageType type = 6;
 }
 
 message AddGateAllowListRequest {

@@ -14,44 +14,50 @@ import (
 	pb "hotwave/service/battle/proto"
 )
 
-func NewTable(c *pb.BattleConfigure) *Table {
+type TableOption struct {
+	ID        string
+	Publisher event.Publisher
+	Conf      *pb.BattleConfigure
+}
+
+func NewTable(opt TableOption) *Table {
+	if opt.ID == "" {
+		opt.ID = uuid.NewString()
+	}
+
 	ret := &Table{
-		ID:   uuid.NewString(),
-		conf: c,
+		TableOption: opt,
+		CreateAt:    time.Now(),
 	}
 
 	ret.action = make(chan func(), 100)
-
-	// runtime.SetFinalizer(ret, func(d *Desk) {
-	// })
 
 	return ret
 }
 
 type Table struct {
-	ID      string
-	conf    *pb.BattleConfigure
-	players sync.Map
+	TableOption
 
-	StartAt time.Time
-	OverAt  time.Time
+	CreateAt time.Time
+	StartAt  time.Time
+	OverAt   time.Time
 
 	logic battle.GameLogic
 
-	isPlaying bool
+	IsPlaying bool
 
 	// watchers    sync.Map
 	// evenReport
 
-	rwlock sync.RWMutex
+	rwlock  sync.RWMutex
+	players sync.Map
+
 	action chan func()
 
 	ticker *time.Ticker
-
-	publisher event.Publisher
 }
 
-func (d *Table) Start(logic battle.GameLogic) error {
+func (d *Table) Init(logic battle.GameLogic, players []*Player, logicConf interface{}) error {
 	d.rwlock.Lock()
 	defer d.rwlock.Unlock()
 
@@ -59,10 +65,29 @@ func (d *Table) Start(logic battle.GameLogic) error {
 		d.logic.OnReset()
 	}
 
+	battlePlayers := make([]battle.Player, len(players))
+	for i, p := range players {
+		// store player
+		d.players.Store(p.Uid, p)
+
+		battlePlayers[i] = p
+	}
+
+	err := logic.OnInit(d, battlePlayers, logicConf)
+	if err != nil {
+		return err
+	}
+
 	d.logic = logic
 
-	go func(jobque chan func()) {
+	return nil
+}
 
+func (d *Table) Start() error {
+	d.rwlock.Lock()
+	defer d.rwlock.Unlock()
+
+	go func(jobque chan func()) {
 		for job := range jobque {
 			job()
 		}
@@ -89,6 +114,8 @@ func (d *Table) Start(logic battle.GameLogic) error {
 		}
 	}(d.ticker)
 
+	d.logic.OnStart()
+
 	return nil
 }
 
@@ -96,15 +123,14 @@ func (d *Table) Close() {
 	if d.ticker != nil {
 		d.ticker.Stop()
 	}
-
 	close(d.action)
 }
 
 func (d *Table) SendMessageToPlayer(p battle.Player, msg proto.Message) {
-	err := p.SendMessage(msg)
-	if err != nil {
-		log.Error(err)
-	}
+	rp := p.(*Player)
+	rp.SendMessage(msg)
+
+	log.Infof("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
 }
 
 func (d *Table) OnWatcherJoin() {
@@ -114,45 +140,56 @@ func (d *Table) OnWatcherJoin() {
 }
 
 func (d *Table) BroadcastMessage(msg proto.Message) {
+	log.Infof("BroadcastMessage: %s: %v", string(proto.MessageName(msg)), msg)
+
 	d.players.Range(func(key, value interface{}) bool {
-		if p, ok := value.(*player); ok && p != nil {
-			d.SendMessageToPlayer(p, msg)
+		if p, ok := value.(*Player); ok && p != nil {
+			p.SendMessage(msg)
 		}
 		return true
 	})
 }
 
 func (d *Table) PublishEvent(event proto.Message) {
-	if d.publisher == nil {
+	log.Infof("PublishEvent: %s: %v", string(proto.MessageName(event)), event)
+
+	if d.Publisher == nil {
 		return
 	}
-
 	//TODO:
-
 	warp := &evproto.EventMessage{
 		Topic:     string(proto.MessageName(event)),
 		Timestamp: time.Now().Unix(),
 	}
-	d.publisher.Publish(warp)
+	d.Publisher.Publish(warp)
 }
 
 func (d *Table) ReportGameStart() {
-	d.isPlaying = true
+	if d.IsPlaying {
+		log.Error("table is playing")
+		return
+	}
+	d.IsPlaying = true
 	d.StartAt = time.Now()
+
+	d.PublishEvent(&pb.BattleStartEvent{})
 }
 
 func (d *Table) ReportGameOver() {
-	d.isPlaying = false
-	d.StartAt = time.Now()
+	if !d.IsPlaying {
+		log.Error("table is not playing")
+		return
+	}
+
+	d.IsPlaying = false
+	d.OverAt = time.Now()
+
+	d.PublishEvent(&pb.BattleOverEvent{})
 }
 
-func (d *Table) PlayerJoin() {
-
-}
-
-func (d *Table) getPlayer(uid int64) *player {
+func (d *Table) GetPlayer(uid int64) *Player {
 	if p, has := d.players.Load(uid); has {
-		return p.(*player)
+		return p.(*Player)
 	}
 	return nil
 }
@@ -162,7 +199,7 @@ func (d *Table) OnPlayerMessage(uid int64, topic string, iraw []byte) {
 	// msg := proto.Clone(fmsg).(*pb.BattleMessageWrap)
 
 	d.action <- func() {
-		p := d.getPlayer(uid)
+		p := d.GetPlayer(uid)
 		if p != nil && d.logic != nil {
 			d.logic.OnMessage(p, topic, iraw)
 		}

@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package battle;
+
+option go_package = "service/battle/proto;proto";
+
+service Battle {
+  rpc CreateBattle(CreateBattleRequest) returns (CreateBattleResponse) {}
+  rpc StartBattle(StartBattleRequest) returns (StartBattleResponse) {}
+  rpc StopBattle(StopBattleRequest) returns (StopBattleResponse) {}
+
+  rpc WatcherJoinBattle(WatcherJoinBattleRequest) returns (WatcherJoinBattleResponse) {}
+}
+
+message PlayerInfo {
+  int64 uid = 1;
+  int32 seat_id = 2;
+  int64 score = 3;
+  bool is_robot = 4;
+}
+
+message BattleConfigure {
+  int32 max_game_time = 3; // 游戏最大进行时间, 单位: second
+}
+
+message CreateBattleRequest {
+  string game_name = 1;
+  bytes game_conf = 2;
+  BattleConfigure battle_conf = 3;
+  repeated PlayerInfo player_infos = 4;
+}
+
+message CreateBattleResponse {
+  string battle_id = 1;
+  string node_id = 2;
+}
+
+message StartBattleRequest {
+  string battle_id = 1;
+}
+
+message StartBattleResponse {}
+
+message StopBattleRequest {
+  string battle_id = 1;
+}
+
+message StopBattleResponse {}
+
+message WatcherJoinBattleRequest {
+  string battle_id = 1;
+  repeated PlayerInfo player_infos = 4;
+}
+
+message WatcherJoinBattleResponse {}
+
+message BattleOverReport {
+  enum State {
+    Finished = 0;  // 完成
+    Disbanded = 1; // 解散
+    Timeover = 2;  // 超时
+  }
+
+  message BattleScore {
+    int64 score = 1;
+    map<string, string> extra = 2;
+  }
+
+  State state = 1;
+  map<int32, BattleScore> tally = 2;
+}
+
+message BattleMessageWrap {
+  string battle_id = 1;
+  int64 uid = 2;
+  string topic = 3;
+  bytes data = 4;
+}
+
+
+message BattleStartEvent {}
+
+message BattleOverEvent {}
