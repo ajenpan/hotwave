@@ -130,7 +130,7 @@ func RealMain(c *cli.Context) error {
 		Cache: cache.NewMemory(),
 	})
 
-	ct := calltable.ExtractParseGRpcMethod(proto.File_auth_proto.Services(), authHandler)
+	ct := calltable.ExtractParseGRpcMethod(proto.File_service_auth_proto_auth_proto.Services(), authHandler)
 	authHandler.CT = ct
 
 	ServerCallTable(http.DefaultServeMux, authHandler, ct)
@@ -152,7 +152,7 @@ func RealMain(c *cli.Context) error {
 		OnConnStatusFunc: func(c *gwclient.GRPCClient, ss transport.SessionStat) {
 			if ss == transport.Connected {
 				c.GetewayClient.AddGateAllowList(context.Background(), &gwproto.AddGateAllowListRequest{
-					Topics: []string{
+					Names: []string{
 						string(protobuf.MessageName(&proto.LoginRequest{})),
 						string(protobuf.MessageName(&proto.CaptchaRequest{})),
 						string(protobuf.MessageName(&proto.LogoutRequest{})),

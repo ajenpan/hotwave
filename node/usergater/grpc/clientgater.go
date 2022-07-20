@@ -110,7 +110,7 @@ func (c *ClientGate) onMessage(in *gwProto.ToServerMessage) {
 	}
 }
 
-func (c *ClientGate) sendMessage(warp *gwProto.ToClientMessage) error {
+func (c *ClientGate) sendMessage(warp *gwProto.ToUserMessage) error {
 	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) != transport.Connected {
 		return io.EOF
 	}

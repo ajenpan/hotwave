@@ -17,7 +17,7 @@ func (s *UserSocket) Send(msg *transport.Message) error {
 		return err
 	}
 
-	warp := &gwProto.ToClientMessage{
+	warp := &gwProto.ToUserMessage{
 		ToUid:      s.UID,
 		ToSocketid: s.RemoteSocketID,
 		Data:       data,

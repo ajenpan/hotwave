@@ -40,7 +40,7 @@ func GRPCClient() {
 	go func() {
 		return
 		for {
-			err := client.SendMessage(&gwProto.ToClientMessage{})
+			err := client.SendMessage(&gwProto.ToUserMessage{})
 			if err != nil {
 				log.Error(err)
 			}

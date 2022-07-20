@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/reflect/protoreflect"
@@ -21,21 +22,28 @@ import (
 	"hotwave/utils/calltable"
 )
 
+type GatewayOption struct {
+	AuthClient auth.Auth
+	Publisher  event.Publisher
+}
+
+func NewGateway(opt GatewayOption) (*Gateway, error) {
+	g := &Gateway{
+		GatewayOption: opt,
+	}
+	g.CT = calltable.ExtractAsyncMethod(protocal.File_service_gateway_proto_client_proto.Messages(), g)
+	return g, nil
+}
+
 type Gateway struct {
 	protocal.UnimplementedGatewayServer
+	GatewayOption
 
-	users   sync.Map //map[int64]usersession
-	sockets sync.Map
-
-	Servers sync.Map
-
-	Authc *auth.LocalAuth
-
-	Publisher event.Publisher
-
+	users     sync.Map //map[int64]usersession
+	sockets   sync.Map
+	Servers   sync.Map
 	Allowlist sync.Map
-
-	CT *calltable.CallTable
+	CT        *calltable.CallTable
 }
 
 func (g *Gateway) AddAllowlistByMsg(msg proto.Message, msgs ...proto.Message) {
@@ -45,6 +53,12 @@ func (g *Gateway) AddAllowlistByMsg(msg proto.Message, msgs ...proto.Message) {
 	}
 }
 
+func (g *Gateway) AddAllowlistByName(msgname string, msgnames ...string) {
+	g.Allowlist.Store(msgname, true)
+	for _, v := range msgnames {
+		g.Allowlist.Store(v, true)
+	}
+}
 func (g *Gateway) pushishEvent(msg proto.Message) {
 	if g.Publisher == nil {
 		return
@@ -106,11 +120,10 @@ func (u *SocketSendWarper) SendPB(msg proto.Message) error {
 	return u.Session.Send(raw)
 }
 
-func (g *Gateway) OnClientConnStat(socket transport.Session, status transport.SessionStat) {
+func (g *Gateway) OnGateConnStat(socket transport.Session, status transport.SessionStat) {
 	switch status {
 	case transport.Connected:
 		g.sockets.Store(socket.ID(), NewSendWarper(socket))
-
 	case transport.Disconnected:
 		g.sockets.Delete(socket.ID())
 		rawUser, has := socket.MetaLoad("userinfo")
@@ -144,11 +157,11 @@ func (g *Gateway) OnGateMessage(session transport.Session, iraw interface{}) {
 	}
 	name := (protoreflect.FullName(msg.Name))
 	fullName := string(name)
-	serverName := string(name.Parent())
+	serverName := msg.Server
 
-	rawUser, hasLogin := session.MetaLoad("user")
+	rawUser, hasUserInfo := session.MetaLoad("user")
 	var uid = int64(0)
-	if !hasLogin {
+	if !hasUserInfo {
 		_, in := g.Allowlist.Load(fullName)
 		if !in {
 			log.Warn("user not login and not in allowlist: ", fullName)
@@ -182,7 +195,7 @@ func (g *Gateway) OnGateMessage(session transport.Session, iraw interface{}) {
 	}
 }
 
-func (g *Gateway) OnRouteMessage(s transport.Session, msg *protocal.ToClientMessage) {
+func (g *Gateway) ToUserMessage(s transport.Session, msg *protocal.ToUserMessage) {
 	var isocket interface{}
 
 	if msg.ToUid != 0 {
@@ -202,6 +215,7 @@ func (g *Gateway) OnRouteMessage(s transport.Session, msg *protocal.ToClientMess
 		Name: msg.Name,
 		Body: msg.Data,
 	}
+
 	raw, err := proto.Marshal(wrap)
 	if err != nil {
 		log.Error(err)
@@ -210,6 +224,7 @@ func (g *Gateway) OnRouteMessage(s transport.Session, msg *protocal.ToClientMess
 
 	if err = isocket.(transport.Session).Send(raw); err != nil {
 		log.Error("socket send err: ", err)
+		//todo: report send failed
 	}
 }
 
@@ -259,6 +274,10 @@ func (rs *Gateway) Proxy(s protocal.Gateway_ProxyServer) error {
 	nodename := strings.Join(md.Get("nodename"), "")
 	nodeid := strings.Join(md.Get("nodeid"), "")
 
+	if nodeid == "" {
+		nodeid = uuid.NewString()
+	}
+
 	id := nodename + "-" + nodeid
 
 	conn := &grpcSvrSession{
@@ -283,7 +302,7 @@ func (rs *Gateway) Proxy(s protocal.Gateway_ProxyServer) error {
 			}
 			break
 		}
-		rs.OnRouteMessage(conn, in)
+		rs.ToUserMessage(conn, in)
 	}
 
 	log.Info("router-grpc-conn disconnect: ", id)
@@ -292,7 +311,7 @@ func (rs *Gateway) Proxy(s protocal.Gateway_ProxyServer) error {
 }
 
 func (rs *Gateway) AddGateAllowList(ctx context.Context, in *protocal.AddGateAllowListRequest) (*protocal.AddGateAllowListResponse, error) {
-	for _, v := range in.Topics {
+	for _, v := range in.Names {
 		log.Info("add allowlist: ", v)
 		rs.Allowlist.Store(v, true)
 	}

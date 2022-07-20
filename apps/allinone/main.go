@@ -19,7 +19,6 @@ import (
 	gwHandler "hotwave/service/gateway/handler"
 	gwProto "hotwave/service/gateway/proto"
 	tcpGate "hotwave/transport/tcp"
-	"hotwave/utils/calltable"
 	"hotwave/utils/rsagen"
 	utilSignal "hotwave/utils/signal"
 )
@@ -120,19 +119,20 @@ func RealMain(c *cli.Context) error {
 	publisher := &event.GrpcEventPublisher{}
 	evProto.RegisterEventServer(grpcs, publisher)
 
-	gw := &gwHandler.Gateway{
-		Authc: &gwAuth.LocalAuth{
+	gw, err := gwHandler.NewGateway(gwHandler.GatewayOption{
+		AuthClient: &gwAuth.LocalAuth{
 			PK: &PK.PublicKey,
 		},
 		Publisher: publisher,
+	})
+
+	if err != nil {
+		panic(err)
 	}
+
 	gw.AddAllowlistByMsg(&gwProto.LoginGateRequest{})
 
 	gwProto.RegisterGatewayServer(grpcs, gw)
-
-	ct := calltable.ExtractAsyncMethod(gwProto.File_client_proto.Messages(), gw)
-
-	gw.CT = ct
 
 	go func() {
 		err = grpcs.Serve(lis)
@@ -145,7 +145,7 @@ func RealMain(c *cli.Context) error {
 	gate := tcpGate.NewServer(tcpGate.ServerOptions{
 		Address:   ":10010",
 		OnMessage: gw.OnGateMessage,
-		OnConn:    gw.OnClientConnStat,
+		OnConn:    gw.OnGateConnStat,
 	})
 
 	if err := gate.Start(); err != nil {

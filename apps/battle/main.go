@@ -65,7 +65,7 @@ func Run() error {
 
 		gwc := &gwclient.GRPCClient{
 			GrpcConn: grpcConn,
-			NodeID:   "battle-1",
+			NodeID:   "battle",
 			NodeType: "battle",
 
 			OnConnStatusFunc: func(c *gwclient.GRPCClient, ss transport.SessionStat) {

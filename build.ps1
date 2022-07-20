@@ -5,8 +5,11 @@ If (!(test-path $release_dir)){
     md $release_dir
 }
 
-$GitCommit=git log -1 --format="%ct"
+go env -w GOOS="windows"
 
-#go env -w GOOS="windows"
+go build -o $release_dir/gateway.exe ./apps/gateway
+go build -o $release_dir/battle.exe ./apps/battle
+go build -o $release_dir/auth.exe ./apps/auth
+
 #go env -w GOOS="linux"
 

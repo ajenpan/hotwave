@@ -26,7 +26,7 @@ func (s *UserSession) Send(msg proto.Message) error {
 	if err != nil {
 		return err
 	}
-	warp := &gwProto.ToClientMessage{
+	warp := &gwProto.ToUserMessage{
 		ToUid:      s.UID,
 		ToSocketid: s.SocketID,
 		Name:       string(proto.MessageName(msg)),
@@ -118,7 +118,7 @@ func (c *GRPCClient) Connect() error {
 	return nil
 }
 
-func (c *GRPCClient) SendMessage(warp *gwProto.ToClientMessage) error {
+func (c *GRPCClient) SendMessage(warp *gwProto.ToUserMessage) error {
 	if transport.SessionStat(atomic.LoadInt32((*int32)(&c.status))) != transport.Connected {
 		return io.EOF
 	}

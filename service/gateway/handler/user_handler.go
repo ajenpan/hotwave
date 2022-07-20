@@ -12,10 +12,10 @@ func (g *Gateway) OnLoginGateRequest(socket transport.Session, in *protocal.Logi
 	var user *auth.UserInfo
 	switch c := in.Checker.(type) {
 	case *protocal.LoginGateRequest_Account:
-		// user = g.Authc.AccountAuth(c.Account.Account, c.Account.Passwd)
+		user = g.AuthClient.AccountAuth(c.Account.Account, c.Account.Passwd)
 	case *protocal.LoginGateRequest_Session:
 	case *protocal.LoginGateRequest_Jwt:
-		user = g.Authc.TokenAuth(c.Jwt)
+		user = g.AuthClient.TokenAuth(c.Jwt)
 	}
 
 	out := &protocal.LoginGateResponse{}
@@ -30,10 +30,12 @@ func (g *Gateway) OnLoginGateRequest(socket transport.Session, in *protocal.Logi
 
 	out.Sessionid = uuid.NewString()
 
+	err := socket.Send(out)
+
 	g.pushishEvent(&protocal.UserConnect{
 		Uid: user.Uid,
 	})
-	return socket.Send(out)
+	return err
 }
 
 func (g *Gateway) OnEchoRequest(socket transport.Session, in *protocal.EchoRequest) error {

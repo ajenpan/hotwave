@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package gateway;
 
-option go_package = "./service/gateway/proto;proto";
+option go_package = "service/gateway/proto";
 
 message UserConnect {
   int64 uid = 1;  

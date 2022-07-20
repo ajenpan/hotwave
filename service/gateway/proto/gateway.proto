@@ -2,17 +2,17 @@ syntax = "proto3";
 
 package gateway;
 
-option go_package = "./service/gateway/proto;proto";
+option go_package = "service/gateway/proto";
 
-import "client.proto";
+import "service/gateway/proto/client.proto";
 
 service Gateway {
-  rpc Proxy(stream ToClientMessage) returns (stream ToServerMessage) {}
+  rpc Proxy(stream ToUserMessage) returns (stream ToServerMessage) {}
 
   rpc AddGateAllowList(AddGateAllowListRequest) returns (AddGateAllowListResponse) {}
 }
 
-message ToClientMessage {
+message ToUserMessage {
   string name = 1;
   bytes data = 2;
 
@@ -35,6 +35,6 @@ message ToServerMessage {
 }
 
 message AddGateAllowListRequest {
-  repeated string topics = 1;
+  repeated string names = 1;
 }
 message AddGateAllowListResponse {}

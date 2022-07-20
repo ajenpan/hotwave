@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package event;
 
-option go_package = "./event/proto;proto";
+option go_package = "event/proto";
 
 service Event {
   rpc Subscribe(SubscribeRequest) returns (stream EventMessage) {}

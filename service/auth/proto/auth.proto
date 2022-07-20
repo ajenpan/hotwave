@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package auth;
 
-option go_package = "./service/auth/proto;proto";
+option go_package = "service/auth/proto";
 
 service Auth {
   rpc Captcha(CaptchaRequest) returns (CaptchaResponse) {}

@@ -34,7 +34,7 @@ func New() *Handler {
 		marshaler:    &marshal.ProtoMarshaler{},
 	}
 
-	ct := calltable.ExtractParseGRpcMethod(proto.File_battle_server_proto.Services(), h)
+	ct := calltable.ExtractParseGRpcMethod(proto.File_service_battle_proto_battle_server_proto.Services(), h)
 
 	h.CT = ct
 	return h

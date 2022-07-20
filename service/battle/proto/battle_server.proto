@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package battle;
 
-option go_package = "service/battle/proto;proto";
+option go_package = "service/battle/proto";
 
 service Battle {
   rpc CreateBattle(CreateBattleRequest) returns (CreateBattleResponse) {}
