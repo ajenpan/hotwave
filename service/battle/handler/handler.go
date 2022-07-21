@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	protobuf "google.golang.org/protobuf/proto"
 
@@ -73,6 +74,10 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleReques
 		return out, fmt.Errorf("create failed")
 	}
 	out.BattleId = d.ID
+
+	time.AfterFunc(1*time.Second, func() {
+		d.Start()
+	})
 	return out, nil
 }
 

@@ -10,12 +10,13 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 
+	_ "hotwave/game/niuniu"
 	"hotwave/logger"
+	"hotwave/service/battle"
 	battleHandler "hotwave/service/battle/handler"
+	gwclient "hotwave/service/gateway/client"
 	"hotwave/transport"
 	utilSignal "hotwave/utils/signal"
-
-	gwclient "hotwave/service/gateway/client"
 )
 
 var (
@@ -76,6 +77,11 @@ func Run() error {
 			},
 			OnUserMessageFunc: h.OnUserMessage,
 		}
+
+		battle.LogicCreator.Store.Range(func(key, value any) bool {
+			logger.Info("reg game:", key.(string))
+			return true
+		})
 
 		gwc.Reconnect()
 		defer gwc.Close()

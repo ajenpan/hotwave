@@ -11,6 +11,7 @@ func (a *Handler) OnUserMessage(s *gwclient.UserSession, msg *gwproto.ToServerMe
 
 	// ProtoMarshaler
 	itable := a.geBattleByUid(s.UID)
+
 	if itable != nil {
 		itable.OnPlayerMessage(s.UID, msg.Name, msg.Data)
 	}

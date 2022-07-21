@@ -6,16 +6,16 @@ import (
 )
 
 type GameLogicCreator struct {
-	store sync.Map
+	Store sync.Map
 }
 
-func (c *GameLogicCreator) Store(name string, creator func() GameLogic) error {
-	c.store.Store(name, creator)
+func (c *GameLogicCreator) Add(name string, creator func() GameLogic) error {
+	c.Store.Store(name, creator)
 	return nil
 }
 
 func (c *GameLogicCreator) CreateLogic(name string) (GameLogic, error) {
-	v, has := c.store.Load(name)
+	v, has := c.Store.Load(name)
 	if !has {
 		return nil, fmt.Errorf("game logic %s not found", name)
 	}
@@ -26,5 +26,5 @@ func (c *GameLogicCreator) CreateLogic(name string) (GameLogic, error) {
 var LogicCreator = &GameLogicCreator{}
 
 func RegisterGame(name string, creator func() GameLogic) error {
-	return LogicCreator.Store(name, creator)
+	return LogicCreator.Add(name, creator)
 }

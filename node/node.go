@@ -12,7 +12,7 @@ import (
 
 type NodeBase struct {
 	NodeID      string
-	NodeType    string
+	NodeName    string
 	NodeVersion string
 
 	publisher event.Publisher
@@ -33,6 +33,6 @@ func (n *NodeBase) PublishEvent(msg proto.Message) {
 	n.publisher.Publish(event)
 }
 
-func (n *NodeBase) SubEvent(topics []string, ct *calltable.CallTable) {
+func (n *NodeBase) SubEvent(nodeid string, topics []string, ct *calltable.CallTable) {
 
 }

@@ -80,6 +80,18 @@ func (d *Table) Init(logic battle.GameLogic, players []*Player, logicConf interf
 
 	d.logic = logic
 
+	switch conf := d.Conf.StartCondition.(type) {
+	case *pb.BattleConfigure_Delayed:
+		if conf.Delayed > 0 {
+			log.Info("start table after %d seconds", conf.Delayed)
+			time.AfterFunc(time.Duration(conf.Delayed)*time.Second, func() {
+				err := d.Start()
+				if err != nil {
+					log.Error(err)
+				}
+			})
+		}
+	}
 	return nil
 }
 
@@ -102,7 +114,7 @@ func (d *Table) Start() error {
 	go func(ticker *time.Ticker) {
 		latest := time.Now()
 		for now := range ticker.C {
-			// now := time.Now()
+
 			sub := now.Sub(latest)
 			latest = now
 

@@ -26,9 +26,12 @@ func (a *LocalAuth) TokenAuth(token string) *UserInfo {
 	}
 }
 
+var c = int64(0)
+
 func (a *LocalAuth) AccountAuth(account string, password string) *UserInfo {
+	c++
 	return &UserInfo{
-		Uid:   1,
+		Uid:   c,
 		Uname: account,
 	}
 }

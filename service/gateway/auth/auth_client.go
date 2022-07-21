@@ -1,12 +1,17 @@
 package auth
 
 import (
+	"context"
 	"crypto/rsa"
+
+	log "hotwave/logger"
+	authproto "hotwave/service/auth/proto"
 	"hotwave/service/common"
 )
 
 type AuthClient struct {
-	PK *rsa.PublicKey
+	PK         *rsa.PublicKey
+	authClient authproto.AuthClient
 }
 
 func (a *AuthClient) TokenAuth(token string) *UserInfo {
@@ -21,8 +26,18 @@ func (a *AuthClient) TokenAuth(token string) *UserInfo {
 }
 
 func (a *AuthClient) AccountAuth(account string, password string) *UserInfo {
-	return &UserInfo{
-		Uid:   1,
-		Uname: account,
+	req := &authproto.LoginRequest{
+		Uname:  account,
+		Passwd: password,
 	}
+	resp, err := a.authClient.Login(context.Background(), req)
+	if err != nil {
+		log.Errorf("auth client login error:%v", err)
+		return nil
+	}
+	ret := &UserInfo{
+		Uid:   resp.UserInfo.Uid,
+		Uname: resp.UserInfo.Uname,
+	}
+	return ret
 }
