@@ -102,6 +102,20 @@ func (p *PacketHead) Decode(headRaw []byte) error {
 	return nil
 }
 
+func (p *Packet) Clone() *Packet {
+	newPacket := &Packet{
+		PacketHead: PacketHead{
+			Typ:    p.Typ,
+			RawLen: int32(len(p.Raw)),
+		},
+	}
+	if len(p.Raw) > 0 {
+		newPacket.Raw = make([]byte, len(p.Raw))
+		copy(newPacket.Raw, p.Raw)
+	}
+	return newPacket
+}
+
 // Packet represents a network Packet.
 type Packet struct {
 	PacketHead
@@ -118,7 +132,7 @@ func NewAckPacket(raw []byte) *Packet {
 	}
 }
 
-//String represents the packet's in text mode.
+// String represents the packet's in text mode.
 func (p *Packet) String() string {
 	return fmt.Sprintf("type:%d, len:%d, raw:%X", p.Typ, len(p.Raw), string(p.Raw))
 }

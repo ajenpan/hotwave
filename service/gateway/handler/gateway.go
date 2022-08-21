@@ -31,7 +31,7 @@ func NewGateway(opt GatewayOption) (*Gateway, error) {
 	g := &Gateway{
 		GatewayOption: opt,
 	}
-	g.CT = calltable.ExtractAsyncMethod(protocal.File_service_gateway_proto_client_proto.Messages(), g)
+	g.CT = calltable.ExtractAsyncMethod(protocal.File_service_gateway_proto_gateway_client_proto.Messages(), g)
 	return g, nil
 }
 
@@ -59,6 +59,7 @@ func (g *Gateway) AddAllowlistByName(msgname string, msgnames ...string) {
 		g.Allowlist.Store(v, true)
 	}
 }
+
 func (g *Gateway) pushishEvent(msg proto.Message) {
 	if g.Publisher == nil {
 		return

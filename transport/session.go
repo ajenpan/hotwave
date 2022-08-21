@@ -9,6 +9,7 @@ const (
 
 type OnMessageFunc func(Session, interface{})
 type OnConnStatFunc func(Session, SessionStat)
+type NewSessionIDFunc func() string
 
 func (s SessionStat) String() string {
 	switch s {

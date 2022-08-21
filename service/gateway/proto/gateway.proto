@@ -4,12 +4,30 @@ package gateway;
 
 option go_package = "service/gateway/proto";
 
-import "service/gateway/proto/client.proto";
+import "service/gateway/proto/gateway-client.proto";
 
 service Gateway {
   rpc Proxy(stream ToUserMessage) returns (stream ToServerMessage) {}
-
+  rpc Forward(stream ForwardMessageWarp) returns (stream ForwardMessageWarp) {}
   rpc AddGateAllowList(AddGateAllowListRequest) returns (AddGateAllowListResponse) {}
+}
+
+message ForwardEndpoint {
+  oneof endpoint {
+    int64 uid = 1;
+    string socketid = 2;
+  }
+}
+
+message ForwardMessageWarp {
+  ForwardEndpoint src = 1;
+  ForwardEndpoint dest = 2;
+
+  string msg_name = 3;
+  bytes data = 4;
+
+  MessageType type = 6;
+  MIMEType mime = 5;
 }
 
 message ToUserMessage {

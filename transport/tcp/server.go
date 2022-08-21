@@ -15,13 +15,10 @@ type ServerOptions struct {
 	HeatbeatInterval time.Duration
 	OnMessage        transport.OnMessageFunc
 	OnConn           transport.OnConnStatFunc
-	NewIDFunc        NewIDFunc
+	NewIDFunc        transport.NewSessionIDFunc
 }
 
-type NewIDFunc func() string
-
 func NewServer(opts ServerOptions) *Server {
-
 	if opts.NewIDFunc == nil {
 		opts.NewIDFunc = newSocketID
 	}
@@ -39,13 +36,11 @@ type Server struct {
 	mu       sync.RWMutex
 	sockets  map[string]*Socket
 	die      chan bool
-	wgLn     sync.WaitGroup
 	wgConns  sync.WaitGroup
 	listener net.Listener
 }
 
 func (s *Server) Stop() error {
-	s.wgLn.Wait()
 	select {
 	case <-s.die:
 	default:
@@ -56,9 +51,6 @@ func (s *Server) Stop() error {
 }
 
 func (s *Server) Start() error {
-	s.wgLn.Add(1)
-	defer s.wgLn.Done()
-
 	s.die = make(chan bool)
 	listener, err := net.Listen("tcp", s.opts.Address)
 	if err != nil {
@@ -140,9 +132,6 @@ func (n *Server) accept(socket *Socket) {
 		p.Reset()
 		socketErr = socket.readPacket(p)
 		if socketErr != nil {
-			// if operror, ok := socketErr.(*net.OpError); ok {
-			// 	log.Warn(operror.Error())
-			// }
 			break
 		}
 		brk := false
@@ -152,9 +141,11 @@ func (n *Server) accept(socket *Socket) {
 				n.opts.OnMessage(socket, p.Raw)
 			}
 		case PacketTypeHeartbeat:
-			fallthrough
+			// do nothing
 		case PacketTypePing:
-			if err := socket.SendPacket(CopyPacket(p)); err != nil {
+			p.Typ = PacketTypePong
+			err := socket.writePacket(p)
+			if err != nil {
 				brk = true
 			}
 		default:

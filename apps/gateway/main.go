@@ -95,7 +95,6 @@ func RealMain(c *cli.Context) error {
 	}
 
 	grpcs := grpc.NewServer()
-
 	publisher := &event.GrpcEventPublisher{}
 	evProto.RegisterEventServer(grpcs, publisher)
 
@@ -111,10 +110,9 @@ func RealMain(c *cli.Context) error {
 	}
 
 	gw.AddAllowlistByMsg(&gwProto.LoginGateRequest{})
-
 	gwProto.RegisterGatewayServer(grpcs, gw)
 
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 20000))
+	lis, err := net.Listen("tcp", ":20000")
 	if err != nil {
 		panic(err)
 	}
@@ -128,7 +126,7 @@ func RealMain(c *cli.Context) error {
 	defer grpcs.Stop()
 
 	gate := tcpGate.NewServer(tcpGate.ServerOptions{
-		Address:   ":10010",
+		Address:   ":10000",
 		OnMessage: gw.OnGateMessage,
 		OnConn:    gw.OnGateConnStat,
 	})
