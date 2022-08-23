@@ -26,7 +26,8 @@ type GameTable interface {
 type GameStatus int16
 
 type GameLogic interface {
-	OnInit(desk GameTable, players []Player, conf interface{}) error
+	OnInit(desk GameTable, conf interface{}) error
+	OnPlayerJoin([]Player) error
 	OnStart() error
 	OnTick(time.Duration)
 	OnReset()

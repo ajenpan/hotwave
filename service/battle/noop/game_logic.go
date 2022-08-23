@@ -15,7 +15,10 @@ func NewGameLogic() battle.GameLogic {
 type GameLogic struct {
 }
 
-func (gl *GameLogic) OnInit(battle.GameTable, []battle.Player, interface{}) error {
+func (gl *GameLogic) OnInit(battle.GameTable, interface{}) error {
+	return nil
+}
+func (gl *GameLogic) OnPlayerJoin(p []battle.Player) error {
 	return nil
 }
 func (gl *GameLogic) OnStart() error {

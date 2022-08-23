@@ -6,9 +6,11 @@ import (
 	"math/rand"
 	"time"
 
-	nncard "github.com/Ajenpan/chinese_poker_go/Niuniu"
+	nncard "github.com/ajenpan/poker_algorithm/niuniu"
 	"github.com/sirupsen/logrus"
 	protobuf "google.golang.org/protobuf/proto"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
+	dynamicpb "google.golang.org/protobuf/types/dynamicpb"
 
 	"hotwave/service/battle"
 	"hotwave/utils/calltable"
@@ -21,7 +23,7 @@ func CreateLogic() battle.GameLogic {
 func CreateNiuniu() *Niuniu {
 	ret := &Niuniu{
 		log:     logrus.New(),
-		players: make(map[int32]*Player),
+		players: make(map[int32]*NNPlayer),
 		info:    &GameInfo{},
 		conf:    &Config{},
 	}
@@ -29,10 +31,10 @@ func CreateNiuniu() *Niuniu {
 }
 
 func init() {
-	battle.RegisterGame("niuniu-v1.1.0", CreateLogic)
+	battle.RegisterGame("niuniu", "1.1.0", CreateLogic)
 }
 
-type Player struct {
+type NNPlayer struct {
 	raw battle.Player
 	*GamePlayerInfo
 	rawHandCards *nncard.NNHandCards
@@ -57,7 +59,7 @@ type Niuniu struct {
 	log   *logrus.Logger
 
 	info    *GameInfo
-	players map[int32]*Player // seatid to player
+	players map[int32]*NNPlayer // seatid to player
 
 	gameTime  time.Duration
 	stageTime time.Duration
@@ -65,15 +67,19 @@ type Niuniu struct {
 	CT *calltable.CallTable
 }
 
-func (nn *Niuniu) OnInit(d battle.GameTable, players []battle.Player, conf interface{}) error {
+func (nn *Niuniu) OnPlayerJoin(players []battle.Player) error {
 	if len(players) == 0 {
-		return fmt.Errorf("player len is 0")
+		return nil
 	}
-
 	for _, v := range players {
-		nn.addPlayer(v)
+		if _, err := nn.addPlayer(v); err != nil {
+			return err
+		}
 	}
+	return nil
+}
 
+func (nn *Niuniu) OnInit(d battle.GameTable, conf interface{}) error {
 	switch v := conf.(type) {
 	case []byte:
 		var err error
@@ -86,9 +92,7 @@ func (nn *Niuniu) OnInit(d battle.GameTable, players []battle.Player, conf inter
 	default:
 		return fmt.Errorf("unknow config type ")
 	}
-
 	nn.table = d
-
 	nn.info = &GameInfo{
 		Status: GameStep_IDLE,
 	}
@@ -97,19 +101,34 @@ func (nn *Niuniu) OnInit(d battle.GameTable, players []battle.Player, conf inter
 }
 
 func (nn *Niuniu) OnStart() error {
+	if len(nn.players) < 2 {
+		return fmt.Errorf("player is not enrough")
+	}
+
 	nn.table.ReportGameStart()
 	nn.ChangeLogicStep(GameStep_BEGIN)
 	return nil
 }
 
-func (nn *Niuniu) OnMessage(p battle.Player, topic string, msg []byte) {
+func (nn *Niuniu) OnMessage(p battle.Player, topic string, raw []byte) {
 	nn.log.Infof("recv topic:%s", topic)
-	//TODO:
-	// msgDes := File_games_niuniu_proto_niuniu_protobufMessages().ByName(protoreflect.Name(topic))
-	// if msgDes != nil {
-	// 	dynamicpb.NewMessage(msgDes)
-	// }
-	// New().Unmarshal(msg)
+
+	msgDes := File_game_niuniu_niuniu_proto.Messages().ByName(protoreflect.Name(topic))
+
+	if msgDes != nil {
+		nn.log.Error("msg desc not found")
+		return
+	}
+	msg := dynamicpb.NewMessage(msgDes)
+	err := protobuf.Unmarshal(raw, msg)
+	if err != nil {
+		return
+	}
+	method := nn.CT.Get(topic)
+	if method == nil {
+		return
+	}
+	method.Call(msg)
 }
 
 func (nn *Niuniu) OnEvent(topic string, event protobuf.Message) {
@@ -123,7 +142,7 @@ func (nn *Niuniu) GameDeskInfoRequest(p battle.Player, req *GameDeskInfoRequest)
 	nn.table.SendMessageToPlayer(p, resp)
 }
 
-func (nn *Niuniu) checkStat(p *Player, expect GameStep) error {
+func (nn *Niuniu) checkStat(p *NNPlayer, expect GameStep) error {
 	if nn.getLogicStep() == expect {
 		return fmt.Errorf("游戏状态错误")
 	}
@@ -133,7 +152,7 @@ func (nn *Niuniu) checkStat(p *Player, expect GameStep) error {
 	return nil
 }
 
-func (nn *Niuniu) OnPlayerBankerRequest(nnPlayer *Player, req *PlayerBanker) {
+func (nn *Niuniu) OnPlayerBankerRequest(nnPlayer *NNPlayer, req *PlayerBanker) {
 	if err := nn.checkStat(nnPlayer, GameStep_BANKER); err != nil {
 		return
 	}
@@ -192,14 +211,16 @@ func (nn *Niuniu) OnPlayerOutCardRequest(p battle.Player, pMsg *PlayerOutCard) {
 	nn.table.BroadcastMessage(notice)
 }
 
-func (nn *Niuniu) addPlayer(p battle.Player) *Player {
-	ret := &Player{}
+func (nn *Niuniu) addPlayer(p battle.Player) (*NNPlayer, error) {
+	ret := &NNPlayer{}
 	ret.GamePlayerInfo = &GamePlayerInfo{}
-
 	ret.GamePlayerInfo.SeatId = int32(p.GetSeatID())
 	ret.raw = p
+	if _, has := nn.players[p.GetSeatID()]; has {
+		return nil, fmt.Errorf("seat repeat")
+	}
 	nn.players[p.GetSeatID()] = ret
-	return ret
+	return ret, nil
 }
 
 func (nn *Niuniu) OnTick(duration time.Duration) {
@@ -313,11 +334,11 @@ func (nn *Niuniu) ChangeLogicStep(s GameStep) {
 	nn.Debug()
 }
 
-func (nn *Niuniu) playerConv(p battle.Player) *Player {
+func (nn *Niuniu) playerConv(p battle.Player) *NNPlayer {
 	return nn.getPlayerBySeatId(p.GetSeatID())
 }
 
-func (nn *Niuniu) getPlayerBySeatId(seatid int32) *Player {
+func (nn *Niuniu) getPlayerBySeatId(seatid int32) *NNPlayer {
 	p, ok := nn.players[seatid]
 	if ok {
 		return p
@@ -410,7 +431,7 @@ func (nn *Niuniu) sendCardToPlayer() {
 }
 
 func (nn *Niuniu) beginTally() {
-	var banker *Player = nil
+	var banker *NNPlayer = nil
 
 	for _, p := range nn.players {
 		if p.Banker {
@@ -463,7 +484,7 @@ func (nn *Niuniu) beginTally() {
 }
 
 func (nn *Niuniu) resetDesk() {
-	nn.players = make(map[int32]*Player)
+	nn.players = make(map[int32]*NNPlayer)
 	for _, p := range nn.players {
 		p.GamePlayerInfo.Reset()
 		p.GamePlayerInfo.Status = GameStep_IDLE

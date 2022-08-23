@@ -26,7 +26,7 @@ enum GameStep {
   UNKNOW = 0;
   IDLE = 1;          // 空闲,等待玩家准备
   COUNTDOWN = 2;     // 开始倒计时
-  BEGIN = 3;         // 开始``
+  BEGIN = 3;         // 开始
   BANKER = 4;        // 抢庄
   BANKER_NOTIFY = 5; // 通知庄
   BET = 6;           // 下注

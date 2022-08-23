@@ -1,8 +1,8 @@
 cloud.google.com/go v0.26.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
 cloud.google.com/go v0.34.0/go.mod h1:aQUYkXzVsufM+DwF1aE+0xfcU+56JwCaLick0ClmMTw=
-github.com/Ajenpan/chinese_poker_go v0.0.0-20200304061007-df3fe5b022ec h1:oktD6/6Ei06eOJgE3W4khc/pfNqdTknTHVpOWmK6NUQ=
-github.com/Ajenpan/chinese_poker_go v0.0.0-20200304061007-df3fe5b022ec/go.mod h1:dDGFiczXYzweyuDkrepOMxfRB7eqagyll6G86IN6PDE=
 github.com/BurntSushi/toml v0.3.1/go.mod h1:xHWCNGjB5oqiDr8zfno3MHue2Ht5sIBksp03qcyfWMU=
+github.com/ajenpan/poker_algorithm v0.0.0-20220823072342-1cdaf895bbce h1:sv19ictD3eqNjsU4DRn1QgMqbFQYPg2dHKSHKrpkxI4=
+github.com/ajenpan/poker_algorithm v0.0.0-20220823072342-1cdaf895bbce/go.mod h1:EAUs6EW5rWhCEcW82e9S98TjXjm3AEFgpCvYtIcZtBg=
 github.com/antihax/optional v1.0.0/go.mod h1:uupD/76wgC+ih3iEmQUL+0Ugr19nfwCT1kdvxnR2qWY=
 github.com/census-instrumentation/opencensus-proto v0.2.1/go.mod h1:f6KPmirojxKA12rnyqOA5BBL4O983OfeGPqjHWSTneU=
 github.com/cespare/xxhash/v2 v2.1.1/go.mod h1:VGX0DQ3Q6kWi7AoAeZDth3/j3BFtOZR5XLFGgcrjCOs=

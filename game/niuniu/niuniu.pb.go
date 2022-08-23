@@ -109,7 +109,7 @@ const (
 	GameStep_UNKNOW        GameStep = 0
 	GameStep_IDLE          GameStep = 1  // 空闲,等待玩家准备
 	GameStep_COUNTDOWN     GameStep = 2  // 开始倒计时
-	GameStep_BEGIN         GameStep = 3  // 开始``
+	GameStep_BEGIN         GameStep = 3  // 开始
 	GameStep_BANKER        GameStep = 4  // 抢庄
 	GameStep_BANKER_NOTIFY GameStep = 5  // 通知庄
 	GameStep_BET           GameStep = 6  // 下注

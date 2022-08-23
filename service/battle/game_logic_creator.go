@@ -2,6 +2,7 @@ package battle
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 )
 
@@ -25,6 +26,6 @@ func (c *GameLogicCreator) CreateLogic(name string) (GameLogic, error) {
 
 var LogicCreator = &GameLogicCreator{}
 
-func RegisterGame(name string, creator func() GameLogic) error {
-	return LogicCreator.Add(name, creator)
+func RegisterGame(name, version string, creator func() GameLogic) error {
+	return LogicCreator.Add(strings.Join([]string{name, version}, "-"), creator)
 }

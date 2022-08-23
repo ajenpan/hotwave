@@ -73,8 +73,11 @@ func (d *Table) Init(logic battle.GameLogic, players []*Player, logicConf interf
 		battlePlayers[i] = p
 	}
 
-	err := logic.OnInit(d, battlePlayers, logicConf)
-	if err != nil {
+	if err := logic.OnInit(d, logicConf); err != nil {
+		return err
+	}
+
+	if err := logic.OnPlayerJoin(battlePlayers); err != nil {
 		return err
 	}
 

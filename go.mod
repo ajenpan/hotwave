@@ -3,7 +3,7 @@ module hotwave
 go 1.18
 
 require (
-	github.com/Ajenpan/chinese_poker_go v0.0.0-20200304061007-df3fe5b022ec
+	github.com/ajenpan/poker_algorithm v0.0.0-20220823072342-1cdaf895bbce
 	github.com/golang-jwt/jwt/v4 v4.4.2
 	github.com/google/uuid v1.3.0
 	github.com/sirupsen/logrus v1.8.1

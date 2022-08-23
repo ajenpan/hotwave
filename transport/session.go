@@ -34,6 +34,8 @@ type Session interface {
 	RemoteAddr() string
 	LocalAddr() string
 
+	Status() SessionStat
+
 	Send(interface{}) error
 	Close()
 	SessionMeta
