@@ -6,9 +6,6 @@ import (
 )
 
 type Router interface {
-	Forward(from transport.Session, msg *protocal.ForwardMessageWarp) error
-}
-
-type Recipient interface {
-	OnMessage(s transport.Session, msg *protocal.ForwardMessageWarp) error
+	Forward(from transport.Session, msg *protocal.ForwardMessageWarp)
+	OnSessionStat(transport.Session, transport.SessionStat)
 }

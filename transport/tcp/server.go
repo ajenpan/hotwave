@@ -20,7 +20,7 @@ type ServerOptions struct {
 
 func NewServer(opts ServerOptions) *Server {
 	if opts.NewIDFunc == nil {
-		opts.NewIDFunc = newSocketID
+		opts.NewIDFunc = transport.NewSessionID
 	}
 
 	ret := &Server{

@@ -13,21 +13,19 @@ service Gateway {
 }
 
 message ForwardEndpoint {
-  oneof endpoint {
-    int64 uid = 1;
-    string socketid = 2;
-  }
+  string endpoint_type = 1;
+  string endpoint_id = 2;
 }
 
 message ForwardMessageWarp {
   ForwardEndpoint src = 1;
   ForwardEndpoint dest = 2;
-
+  
   string msg_name = 3;
   bytes data = 4;
-
-  MessageType type = 6;
   MIMEType mime = 5;
+  MessageType type = 6;
+  map<string, string> mate = 7;
 }
 
 message ToUserMessage {

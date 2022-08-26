@@ -22,15 +22,9 @@ type SocketOptions struct {
 
 type SocketOption func(*SocketOptions)
 
-var sid int64 = 0
-
-func newSocketID() string {
-	return fmt.Sprintf("%d_%d", atomic.AddInt64(&sid, 1), time.Now().Unix())
-}
-
 func NewSocket(conn net.Conn, opts SocketOptions) *Socket {
 	if opts.ID == "" {
-		opts.ID = newSocketID()
+		opts.ID = transport.NewSessionID()
 	}
 
 	ret := &Socket{

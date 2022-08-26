@@ -76,6 +76,15 @@ func (g *Gateway) pushishEvent(msg proto.Message) {
 	})
 }
 
+func (g *Gateway) Forward(from transport.Session, msg *protocal.ForwardMessageWarp) error {
+
+	return nil
+}
+
+func (g *Gateway) OnSessionStat(transport.Session, transport.SessionStat) {
+
+}
+
 type SocketSendWarper struct {
 	transport.Session
 }
@@ -254,6 +263,10 @@ func (s *grpcSvrSession) RemoteAddr() string {
 }
 func (s *grpcSvrSession) LocalAddr() string {
 	return ""
+}
+
+func (s *grpcSvrSession) Status() transport.SessionStat {
+	return transport.Connected
 }
 
 func (s *grpcSvrSession) Send(msg interface{}) error {

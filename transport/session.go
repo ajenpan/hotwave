@@ -1,5 +1,11 @@
 package transport
 
+import (
+	"fmt"
+	"sync/atomic"
+	"time"
+)
+
 type SessionStat int32
 
 const (
@@ -19,6 +25,12 @@ func (s SessionStat) String() string {
 		return "disconnected"
 	}
 	return "unknown"
+}
+
+var sid int64 = 0
+
+func NewSessionID() string {
+	return fmt.Sprintf("%d_%d", atomic.AddInt64(&sid, 1), time.Now().Unix())
 }
 
 type SessionMeta interface {

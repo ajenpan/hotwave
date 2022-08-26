@@ -73,7 +73,7 @@ func (c *Client) Connect() error {
 	}
 
 	socket := NewSocket(conn, SocketOptions{
-		ID: newSocketID(),
+		ID: transport.NewSessionID(),
 	})
 
 	//send ack
