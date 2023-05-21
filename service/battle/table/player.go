@@ -5,6 +5,8 @@ import (
 
 	protobuf "google.golang.org/protobuf/proto"
 
+	"hotwave/service/battle"
+	bf "hotwave/service/battle"
 	pb "hotwave/service/battle/proto"
 )
 
@@ -35,26 +37,35 @@ func NewPlayers(infos []*pb.PlayerInfo) ([]*Player, error) {
 
 type Player struct {
 	*pb.PlayerInfo
-	// table *Table
+	tableid string
+
+	sender func(msgname string, raw []byte) error
 }
 
-func (p *Player) GetScore() int64 {
+func (p *Player) Score() int64 {
 	return p.PlayerInfo.Score
 }
 
-func (p *Player) GetUserID() int64 {
+func (p *Player) UserID() int64 {
 	return p.PlayerInfo.Uid
 }
 
-func (p *Player) GetSeatID() int32 {
-	return p.PlayerInfo.SeatId
+func (p *Player) SeatID() battle.SeatID {
+	return battle.SeatID(p.PlayerInfo.SeatId)
 }
 
-func (p *Player) IsRobot() bool {
-	return p.PlayerInfo.IsRobot
+func (p *Player) Role() bf.RoleType {
+	if p.PlayerInfo.IsRobot {
+		return bf.RoleType_Robot
+	}
+	return bf.RoleType_Player
 }
 
 func (p *Player) SendMessage(protobuf.Message) error {
 
 	return nil
+}
+
+func (p *Player) Send(msgname string, raw []byte) error {
+	return p.sender(msgname, raw)
 }

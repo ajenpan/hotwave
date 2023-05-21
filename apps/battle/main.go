@@ -7,16 +7,8 @@ import (
 	"runtime"
 
 	"github.com/urfave/cli/v2"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 
-	_ "hotwave/game/niuniu"
-	"hotwave/logger"
-	"hotwave/service/battle"
-	battleHandler "hotwave/service/battle/handler"
-	gwclient "hotwave/service/gateway/client"
-	"hotwave/transport"
-	utilSignal "hotwave/utils/signal"
+	_ "hotwave/games/niuniu"
 )
 
 var (
@@ -56,40 +48,6 @@ func Run() error {
 	app := cli.NewApp()
 	app.Version = Version
 	app.Name = Name
-
-	app.Action = func(c *cli.Context) error {
-		h := battleHandler.New()
-		grpcConn, err := grpc.Dial("localhost:20000", grpc.WithTransportCredentials(insecure.NewCredentials()))
-		if err != nil {
-			panic(err)
-		}
-
-		gwc := &gwclient.GRPCClient{
-			GrpcConn: grpcConn,
-			NodeID:   "battle",
-			NodeType: "battle",
-
-			OnConnStatusFunc: func(c *gwclient.GRPCClient, ss transport.SessionStat) {
-				if ss == transport.Connected {
-				} else {
-					go c.Reconnect()
-				}
-			},
-			OnUserMessageFunc: h.OnUserMessage,
-		}
-
-		battle.LogicCreator.Store.Range(func(key, value any) bool {
-			logger.Info("reg game:", key.(string))
-			return true
-		})
-
-		gwc.Reconnect()
-		defer gwc.Close()
-
-		s := utilSignal.WaitShutdown()
-		logger.Infof("recv signal: %v", s.String())
-		return nil
-	}
 
 	err := app.Run(os.Args)
 	return err

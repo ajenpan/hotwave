@@ -1,8 +1,9 @@
 package matcher
 
 import (
-	"hotwave/service/lobby/user"
 	"sync"
+
+	"hotwave/service/lobby/user"
 )
 
 type MatchQue struct {
@@ -21,7 +22,7 @@ type StaticMatcher struct {
 	users  []*user.UserInfo
 }
 
-//TODO:
+// TODO:
 func (sm *StaticMatcher) Add(u *user.UserInfo) {
 	sm.rwlock.Lock()
 	defer sm.rwlock.Unlock()
@@ -30,8 +31,4 @@ func (sm *StaticMatcher) Add(u *user.UserInfo) {
 
 	const expert = 4
 
-	if len(sm.users) >= expert {
-		//create battle
-
-	}
 }

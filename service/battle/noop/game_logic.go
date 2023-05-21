@@ -3,36 +3,34 @@ package noop
 import (
 	"time"
 
-	"google.golang.org/protobuf/proto"
-
-	"hotwave/service/battle"
+	battle "hotwave/service/battle"
 )
 
-func NewGameLogic() battle.GameLogic {
-	return &GameLogic{}
+func NewGameLogic() battle.Logic {
+	return &NoopLogic{}
 }
 
-type GameLogic struct {
+type NoopLogic struct {
 }
 
-func (gl *GameLogic) OnInit(battle.GameTable, interface{}) error {
+func (gl *NoopLogic) OnInit(battle.Table, interface{}) error {
 	return nil
 }
-func (gl *GameLogic) OnPlayerJoin(p []battle.Player) error {
+func (gl *NoopLogic) OnPlayerJoin(p []battle.Player) error {
 	return nil
 }
-func (gl *GameLogic) OnStart() error {
+func (gl *NoopLogic) OnStart() error {
 	return nil
 }
-func (gl *GameLogic) OnTick(time.Duration) {
+func (gl *NoopLogic) OnTick(time.Duration) {
 
 }
-func (gl *GameLogic) OnReset() {
+func (gl *NoopLogic) OnReset() {
 
 }
-func (gl *GameLogic) OnMessage(battle.Player, string, []byte) {
+func (gl *NoopLogic) OnPlayerMessage(p battle.Player, msgid uint32, data []byte) {
 
 }
-func (gl *GameLogic) OnEvent(string, proto.Message) {
+func (gl *NoopLogic) OnCommand(topic string, data []byte) {
 
 }

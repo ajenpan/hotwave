@@ -22,8 +22,6 @@ type Method struct {
 	Imp   reflect.Method
 	Style MethodStyle
 
-	H interface{}
-
 	RequestType  reflect.Type
 	ResponseType reflect.Type
 
@@ -42,10 +40,9 @@ func (m *Method) InitPool() {
 }
 
 func (m *Method) Call(args ...interface{}) []reflect.Value {
-	values := make([]reflect.Value, 0, len(args)+1)
-	values = append(values, reflect.ValueOf(m.H))
-	for _, v := range args {
-		values = append(values, reflect.ValueOf(v))
+	values := make([]reflect.Value, len(args))
+	for i, v := range args {
+		values[i] = reflect.ValueOf(v)
 	}
 	return m.Imp.Func.Call(values)
 }
@@ -92,35 +89,30 @@ func (m *Method) PutResponse(resp interface{}) {
 	m.respPool.Put(resp)
 }
 
-type CallTable struct {
+type CallTable[T comparable] struct {
 	sync.RWMutex
-	list map[string]*Method
+	list map[T]*Method
 }
 
-func NewCallTable() *CallTable {
-	return &CallTable{
-		list: make(map[string]*Method),
+func NewCallTable[T comparable]() *CallTable[T] {
+	return &CallTable[T]{
+		list: make(map[T]*Method),
 	}
 }
 
-func (m *CallTable) Len() int {
+func (m *CallTable[T]) Len() int {
 	m.RLock()
 	defer m.RUnlock()
 	return len(m.list)
 }
 
-func (m *CallTable) Get(name string) *Method {
+func (m *CallTable[T]) Get(name T) *Method {
 	m.RLock()
 	defer m.RUnlock()
-
-	ret, has := m.list[name]
-	if has {
-		return ret
-	}
-	return nil
+	return m.list[name]
 }
 
-func (m *CallTable) Range(f func(key string, value *Method) bool) {
+func (m *CallTable[T]) Range(f func(key T, value *Method) bool) {
 	m.Lock()
 	defer m.Unlock()
 	for k, v := range m.list {
@@ -130,7 +122,7 @@ func (m *CallTable) Range(f func(key string, value *Method) bool) {
 	}
 }
 
-func (m *CallTable) Merge(other *CallTable, overWrite bool) int {
+func (m *CallTable[T]) Merge(other *CallTable[T], overWrite bool) int {
 	ret := 0
 	other.RWMutex.RLock()
 	defer other.RWMutex.RUnlock()
@@ -149,7 +141,7 @@ func (m *CallTable) Merge(other *CallTable, overWrite bool) int {
 	return ret
 }
 
-func (m *CallTable) Add(name string, method *Method) bool {
+func (m *CallTable[T]) Add(name T, method *Method) bool {
 	m.Lock()
 	defer m.Unlock()
 	if _, has := m.list[name]; has {

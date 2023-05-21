@@ -13,7 +13,7 @@ If (!(test-path $release_dir)){
 
 # build for linux
 go env -w GOOS="linux"
-go build -o $release_dir/gateway ./apps/gateway
-
+go build -o $release_dir/route ./apps/route
 
 go env -w GOOS="windows"
+go build -o $release_dir/route.exe ./apps/route

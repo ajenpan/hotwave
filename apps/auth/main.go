@@ -1,18 +1,14 @@
 package main
 
 import (
-	"context"
-	"crypto/rsa"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"os"
 	"reflect"
 
 	"github.com/urfave/cli/v2"
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/protobuf/encoding/protojson"
 	protobuf "google.golang.org/protobuf/proto"
 	"gorm.io/driver/mysql"
@@ -21,13 +17,10 @@ import (
 	"gorm.io/gorm/schema"
 
 	log "hotwave/logger"
-	"hotwave/marshal"
 	"hotwave/service/auth/handler"
 	"hotwave/service/auth/proto"
 	"hotwave/service/auth/store/cache"
-	gwclient "hotwave/service/gateway/client"
-	gwproto "hotwave/service/gateway/proto"
-	"hotwave/transport"
+	"hotwave/service/auth/store/models"
 	"hotwave/utils/calltable"
 	"hotwave/utils/rsagen"
 	utilSignal "hotwave/utils/signal"
@@ -43,21 +36,25 @@ var ConfigPath string = ""
 var ListenAddr string = ""
 var PrintConf bool = false
 
-func ReadRSAKey() (*rsa.PrivateKey, error) {
-	const privateFile = "private.pem"
-	const publicFile = "public.pem"
+const PrivateKeyFile = "private.pem"
+const PublicKeyFile = "public.pem"
 
-	raw, err := os.ReadFile(privateFile)
+func ReadRSAKey() ([]byte, []byte, error) {
+	privateRaw, err := os.ReadFile(PrivateKeyFile)
 	if err != nil {
 		privateKey, publicKey, err := rsagen.GenerateRsaPem(2048)
 		if err != nil {
-			return nil, err
+			return nil, nil, err
 		}
-		raw = []byte(privateKey)
-		os.WriteFile(privateFile, []byte(privateKey), 0644)
-		os.WriteFile(publicFile, []byte(publicKey), 0644)
+		privateRaw = []byte(privateKey)
+		os.WriteFile(PrivateKeyFile, []byte(privateKey), 0644)
+		os.WriteFile(PublicKeyFile, []byte(publicKey), 0644)
 	}
-	return rsagen.ParseRsaPrivateKeyFromPem(raw)
+	publicRaw, err := os.ReadFile(PublicKeyFile)
+	if err != nil {
+		return nil, nil, err
+	}
+	return privateRaw, publicRaw, nil
 }
 
 func main() {
@@ -98,9 +95,9 @@ func main() {
 	}
 }
 
-func createMysqlClient(dsn string) *gorm.DB {
+func CreateMysqlClient(dsn string) *gorm.DB {
 	dbc, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		DisableNestedTransaction: true, //关闭嵌套事务
+		DisableNestedTransaction: true,
 		NamingStrategy: schema.NamingStrategy{
 			SingularTable: true,
 		},
@@ -111,8 +108,14 @@ func createMysqlClient(dsn string) *gorm.DB {
 	return dbc
 }
 
-func createSQLiteClient(dsn string) *gorm.DB {
+func CreateSQLiteClient(dsn string) *gorm.DB {
 	dbc, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
+	if err != nil {
+		panic(err)
+	}
+	err = dbc.AutoMigrate(
+		&models.Users{},
+	)
 	if err != nil {
 		panic(err)
 	}
@@ -120,61 +123,44 @@ func createSQLiteClient(dsn string) *gorm.DB {
 }
 
 func RealMain(c *cli.Context) error {
-	pk, err := ReadRSAKey()
+	privateRaw, publicRaw, err := ReadRSAKey()
 	if err != nil {
 		panic(err)
 	}
+	pk, err := rsagen.ParseRsaPrivateKeyFromPem(privateRaw)
+	if err != nil {
+		return err
+	}
+
 	authHandler := handler.NewAuth(handler.AuthOptions{
-		PK:    pk,
-		DB:    createMysqlClient("root:123456@tcp(localhost:3306)/auth?charset=utf8mb4&parseTime=True&loc=Local"),
-		Cache: cache.NewMemory(),
+		PK:        pk,
+		PublicKey: publicRaw,
+		DB:        CreateSQLiteClient("auth.db"),
+		Cache:     cache.NewMemory(),
 	})
 
-	ct := calltable.ExtractParseGRpcMethod(proto.File_service_auth_proto_auth_proto.Services(), authHandler)
-	authHandler.CT = ct
+	authHandler.CT = calltable.ExtractParseGRpcMethod(proto.File_proto_auth_proto.Services(), authHandler)
 
-	ServerCallTable(http.DefaultServeMux, authHandler, ct)
-	fmt.Println("start http server at: ", ListenAddr)
+	ServerCallTable(http.DefaultServeMux, authHandler, authHandler.CT)
+
+	fmt.Println("start http server at:", ListenAddr)
 
 	go func() {
 		http.ListenAndServe(ListenAddr, nil)
 	}()
 
-	grpcConn, err := grpc.Dial("localhost:20000", grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		panic(err)
-	}
-
-	gwc := &gwclient.GRPCClient{
-		GrpcConn: grpcConn,
-		NodeID:   "auth-1",
-		NodeType: "auth",
-		OnConnStatusFunc: func(c *gwclient.GRPCClient, ss transport.SessionStat) {
-			if ss == transport.Connected {
-				c.GetewayClient.AddGateAllowList(context.Background(), &gwproto.AddGateAllowListRequest{
-					Names: []string{
-						string(protobuf.MessageName(&proto.LoginRequest{})),
-						string(protobuf.MessageName(&proto.CaptchaRequest{})),
-						string(protobuf.MessageName(&proto.LogoutRequest{})),
-					},
-				})
-			} else {
-				go c.Reconnect()
-			}
-		},
-		OnUserMessageFunc: authHandler.OnUserMessage,
-	}
-
-	gwc.Reconnect()
-	defer gwc.Close()
-
-	authHandler.Client = gwc
 	signal := utilSignal.WaitShutdown()
 	log.Infof("recv signal: %v", signal.String())
 	return nil
 }
 
-func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.CallTable) {
+func AuthMiddleWrap(f func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
+		f(w, r)
+	}
+}
+
+func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.CallTable[string]) {
 	respWithError := func(w http.ResponseWriter, data interface{}, err error) {
 		type HttpRespType struct {
 			Data    interface{} `json:"data"`
@@ -195,28 +181,23 @@ func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.Call
 
 	ct.Range(func(key string, method *calltable.Method) bool {
 		pattern := "/" + key
-		fmt.Println("handle: ", pattern)
-		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
-			raw, err := ioutil.ReadAll(r.Body)
 
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
+		fmt.Println("register http method:", pattern)
 
+		cb := func(w http.ResponseWriter, r *http.Request) {
+			raw, err := io.ReadAll(r.Body)
 			if err != nil {
 				respWithError(w, nil, fmt.Errorf("read body error: %s", err.Error()))
 				return
 			}
 
+			w.Header().Set("Content-Type", "application/json; charset=utf-8")
 			req := reflect.New(method.RequestType).Interface().(protobuf.Message)
 
 			// todo : get marshaler
-			jsonpb := &marshal.JSONPb{
-				MarshalOptions: protojson.MarshalOptions{
-					EmitUnpopulated: true,
-					UseProtoNames:   true,
-				},
-			}
 
-			if err := jsonpb.Unmarshal(raw, req); err != nil {
+			unmarshal := &protojson.UnmarshalOptions{}
+			if err := unmarshal.Unmarshal(raw, req); err != nil {
 				respWithError(w, nil, fmt.Errorf("unmarshal request error: %s", err.Error()))
 				return
 			}
@@ -236,7 +217,11 @@ func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.Call
 			var respData json.RawMessage
 			if !respArgs[0].IsNil() {
 				if resp, ok := respArgs[0].Interface().(protobuf.Message); ok {
-					data, err := jsonpb.Marshal(resp)
+					marshal := &protojson.MarshalOptions{
+						EmitUnpopulated: true,
+						UseProtoNames:   true,
+					}
+					data, err := marshal.Marshal(resp)
 					if err == nil {
 						respData = data
 					} else {
@@ -244,9 +229,11 @@ func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.Call
 					}
 				}
 			}
-
 			respWithError(w, respData, respErr)
-		})
+		}
+		cb = AuthMiddleWrap(cb)
+		mux.HandleFunc(pattern, cb)
+
 		return true
 	})
 }

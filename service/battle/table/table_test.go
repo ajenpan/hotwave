@@ -12,7 +12,7 @@ import (
 )
 
 type logicwarper struct {
-	battle.GameLogic
+	battle.Logic
 	ontick func(time.Duration)
 }
 
@@ -25,7 +25,7 @@ func TestTableTicker(t *testing.T) {
 
 	logic := noop.NewGameLogic()
 	logic = &logicwarper{
-		GameLogic: logic,
+		Logic: logic,
 		ontick: func(d time.Duration) {
 			t.Logf("tick %v", d)
 			tk += d

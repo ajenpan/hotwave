@@ -10,11 +10,11 @@ var DefaultVersion = NewAppInfo()
 
 func NewAppInfo() *AppInfo {
 	return &AppInfo{
-		Name:       "unknown",
-		Version:    "unknown",
-		GitCommit:  "unknown",
-		BuildAt:    "unknown",
-		BuildBy:    "runtime.Version()",
+		Name:       "unknow",
+		Version:    "unknow",
+		GitCommit:  "unknow",
+		BuildAt:    "unknow",
+		BuildBy:    runtime.Version(),
 		RunnningOS: runtime.GOOS + "/" + runtime.GOARCH,
 	}
 }

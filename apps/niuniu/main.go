@@ -6,12 +6,7 @@ import (
 
 	"github.com/urfave/cli/v2"
 
-	"hotwave/event"
 	log "hotwave/logger"
-	gwAuth "hotwave/service/gateway/auth"
-	gwHandler "hotwave/service/gateway/handler"
-	gwProto "hotwave/service/gateway/proto"
-	tcpGate "hotwave/transport/tcp"
 	utilSignal "hotwave/utils/signal"
 )
 
@@ -64,29 +59,6 @@ func main() {
 }
 
 func RealMain(c *cli.Context) error {
-	publisher := &event.GrpcEventPublisher{}
-
-	gw, err := gwHandler.NewGateway(gwHandler.GatewayOption{
-		AuthClient: &gwAuth.FakeAuth{},
-		Publisher:  publisher,
-	})
-
-	if err != nil {
-		panic(err)
-	}
-
-	gw.AddAllowlistByMsg(&gwProto.LoginGateRequest{})
-
-	gate := tcpGate.NewServer(tcpGate.ServerOptions{
-		Address:   ":10000",
-		OnMessage: gw.OnGateMessage,
-		OnConn:    gw.OnGateConnStat,
-	})
-
-	if err := gate.Start(); err != nil {
-		panic(err)
-	}
-	defer gate.Stop()
 
 	signal := utilSignal.WaitShutdown()
 	log.Infof("recv signal: %v", signal.String())

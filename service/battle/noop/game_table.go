@@ -1,9 +1,9 @@
 package noop
 
 import (
-	"google.golang.org/protobuf/proto"
+	battle "hotwave/service/battle"
 
-	"hotwave/service/battle"
+	"google.golang.org/protobuf/proto"
 )
 
 func NewGameTable() *GameDesk {
@@ -25,5 +25,5 @@ func (gd *GameDesk) PublishEvent(proto.Message) {
 
 }
 
-func (gd *GameDesk) ReportGameOver() {
+func (gd *GameDesk) ReportBattleStatus(battle.GameStatus) {
 }

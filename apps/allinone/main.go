@@ -3,22 +3,14 @@ package main
 import (
 	"crypto/rsa"
 	"fmt"
-	"net"
 	"os"
 
 	"github.com/urfave/cli/v2"
-	"google.golang.org/grpc"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/schema"
 
-	"hotwave/event"
-	evProto "hotwave/event/proto"
 	log "hotwave/logger"
-	gwAuth "hotwave/service/gateway/auth"
-	gwHandler "hotwave/service/gateway/handler"
-	gwProto "hotwave/service/gateway/proto"
-	tcpGate "hotwave/transport/tcp"
 	"hotwave/utils/rsagen"
 	utilSignal "hotwave/utils/signal"
 )
@@ -109,49 +101,6 @@ func RealMain(c *cli.Context) error {
 	if err != nil {
 		panic(err)
 	}
-
-	lis, err := net.Listen("tcp", fmt.Sprintf("localhost:%d", 20000))
-	if err != nil {
-		panic(err)
-	}
-	grpcs := grpc.NewServer()
-
-	publisher := &event.GrpcEventPublisher{}
-	evProto.RegisterEventServer(grpcs, publisher)
-
-	gw, err := gwHandler.NewGateway(gwHandler.GatewayOption{
-		AuthClient: &gwAuth.LocalAuth{
-			PK: &PK.PublicKey,
-		},
-		Publisher: publisher,
-	})
-
-	if err != nil {
-		panic(err)
-	}
-
-	gw.AddAllowlistByMsg(&gwProto.LoginGateRequest{})
-
-	gwProto.RegisterGatewayServer(grpcs, gw)
-
-	go func() {
-		err = grpcs.Serve(lis)
-		if err != nil {
-			panic(err)
-		}
-	}()
-	defer grpcs.Stop()
-
-	gate := tcpGate.NewServer(tcpGate.ServerOptions{
-		Address:   ":10010",
-		OnMessage: gw.OnGateMessage,
-		OnConn:    gw.OnGateConnStat,
-	})
-
-	if err := gate.Start(); err != nil {
-		panic(err)
-	}
-	defer gate.Stop()
 
 	signal := utilSignal.WaitShutdown()
 	log.Infof("recv signal: %v", signal.String())

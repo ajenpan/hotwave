@@ -8,16 +8,16 @@ import (
 	"google.golang.org/protobuf/proto"
 
 	"hotwave/event"
-	evproto "hotwave/event/proto"
 	log "hotwave/logger"
-	"hotwave/service/battle"
+
+	bf "hotwave/service/battle"
 	pb "hotwave/service/battle/proto"
 )
 
 type TableOption struct {
-	ID        string
-	Publisher event.Publisher
-	Conf      *pb.BattleConfigure
+	ID             string
+	EventPublisher event.Publisher
+	Conf           *pb.BattleConfigure
 }
 
 func NewTable(opt TableOption) *Table {
@@ -26,7 +26,7 @@ func NewTable(opt TableOption) *Table {
 	}
 
 	ret := &Table{
-		TableOption: opt,
+		TableOption: &opt,
 		CreateAt:    time.Now(),
 	}
 
@@ -36,15 +36,13 @@ func NewTable(opt TableOption) *Table {
 }
 
 type Table struct {
-	TableOption
+	*TableOption
 
 	CreateAt time.Time
 	StartAt  time.Time
 	OverAt   time.Time
 
-	logic battle.GameLogic
-
-	IsPlaying bool
+	battle bf.Logic
 
 	// watchers    sync.Map
 	// evenReport
@@ -55,17 +53,19 @@ type Table struct {
 	action chan func()
 
 	ticker *time.Ticker
+
+	battleStatus bf.GameStatus
 }
 
-func (d *Table) Init(logic battle.GameLogic, players []*Player, logicConf interface{}) error {
+func (d *Table) Init(logic bf.Logic, players []*Player, logicConf interface{}) error {
 	d.rwlock.Lock()
 	defer d.rwlock.Unlock()
 
-	if d.logic != nil {
-		d.logic.OnReset()
+	if d.battle != nil {
+		d.battle.OnReset()
 	}
 
-	battlePlayers := make([]battle.Player, len(players))
+	battlePlayers := make([]bf.Player, len(players))
 	for i, p := range players {
 		// store player
 		d.players.Store(p.Uid, p)
@@ -81,7 +81,7 @@ func (d *Table) Init(logic battle.GameLogic, players []*Player, logicConf interf
 		return err
 	}
 
-	d.logic = logic
+	d.battle = logic
 
 	switch conf := d.Conf.StartCondition.(type) {
 	case *pb.BattleConfigure_Delayed:
@@ -97,17 +97,28 @@ func (d *Table) Init(logic battle.GameLogic, players []*Player, logicConf interf
 	}
 	return nil
 }
+func (d *Table) pushAction(f func()) {
+	d.action <- f
+}
 
 func (d *Table) Start() error {
 	d.rwlock.Lock()
 	defer d.rwlock.Unlock()
 
-	go func(jobque chan func()) {
-		for job := range jobque {
-			job()
+	go func() {
+		safecall := func(f func()) {
+			defer func() {
+				if err := recover(); err != nil {
+					log.Error("panic: %v", err)
+				}
+			}()
+			f()
 		}
 
-	}(d.action)
+		for job := range d.action {
+			safecall(job)
+		}
+	}()
 
 	if d.ticker != nil {
 		d.ticker.Stop()
@@ -117,21 +128,18 @@ func (d *Table) Start() error {
 	go func(ticker *time.Ticker) {
 		latest := time.Now()
 		for now := range ticker.C {
-
 			sub := now.Sub(latest)
 			latest = now
 
-			d.action <- func() {
-				if d.logic != nil {
-					d.logic.OnTick(sub)
+			d.pushAction(func() {
+				if d.battle != nil {
+					d.battle.OnTick(sub)
 				}
-			}
+			})
 		}
 	}(d.ticker)
 
-	d.logic.OnStart()
-
-	return nil
+	return d.battle.OnStart()
 }
 
 func (d *Table) Close() {
@@ -141,64 +149,82 @@ func (d *Table) Close() {
 	close(d.action)
 }
 
-func (d *Table) SendMessageToPlayer(p battle.Player, msg proto.Message) {
-	rp := p.(*Player)
-	rp.SendMessage(msg)
+func (d *Table) ReportBattleStatus(s bf.GameStatus) {
+	if d.battleStatus == s {
+		return
+	}
 
-	log.Infof("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
+	statusBefore := d.battleStatus
+	d.battleStatus = s
+
+	event := &pb.BattleStatusChangeEvent{
+		StatusBefore: int32(statusBefore),
+		StatusNow:    int32(s),
+		BattleId:     d.ID,
+	}
+	d.PublishEvent(event)
+
+	switch s {
+	case bf.BattleStatus_Idle:
+	case bf.BattleStatus_Start:
+		d.reportGameStart()
+	case bf.BattleStatus_Over:
+		d.reportGameOver()
+	}
 }
 
-func (d *Table) OnWatcherJoin() {
-	d.action <- func() {
-		//todo:
+func (d *Table) ReportBattleEvent(topic string, event proto.Message) {
+	d.PublishEvent(event)
+}
+
+func (d *Table) SendMessageToPlayer(p bf.Player, msg proto.Message) {
+
+	rp, ok := p.(*Player)
+	if !ok {
+		log.Error("player is not Player")
+		return
+	}
+
+	err := rp.SendMessage(msg)
+	if err != nil {
+		log.Error("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
+	} else {
+		log.Debug("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
 	}
 }
 
 func (d *Table) BroadcastMessage(msg proto.Message) {
-	log.Infof("BroadcastMessage: %s: %v", string(proto.MessageName(msg)), msg)
+	msgname := string(proto.MessageName(msg))
+	log.Debugf("BroadcastMessage: %s: %v", msgname, msg)
+
+	raw, err := proto.Marshal(msg)
+	if err != nil {
+		log.Error(err)
+		return
+	}
 
 	d.players.Range(func(key, value interface{}) bool {
 		if p, ok := value.(*Player); ok && p != nil {
-			p.SendMessage(msg)
+			err := p.Send(msgname, raw)
+			if err != nil {
+				log.Error(err)
+			}
 		}
 		return true
 	})
 }
 
-func (d *Table) PublishEvent(event proto.Message) {
-	log.Infof("PublishEvent: %s: %v", string(proto.MessageName(event)), event)
-
-	if d.Publisher == nil {
-		return
-	}
-	//TODO:
-	warp := &evproto.EventMessage{
-		Topic:     string(proto.MessageName(event)),
-		Timestamp: time.Now().Unix(),
-	}
-	d.Publisher.Publish(warp)
+func (d *Table) IsPlaying() bool {
+	return d.battleStatus == bf.BattleStatus_Start
 }
 
-func (d *Table) ReportGameStart() {
-	if d.IsPlaying {
-		log.Error("table is playing")
-		return
-	}
-	d.IsPlaying = true
+func (d *Table) reportGameStart() {
 	d.StartAt = time.Now()
-
 	d.PublishEvent(&pb.BattleStartEvent{})
 }
 
-func (d *Table) ReportGameOver() {
-	if !d.IsPlaying {
-		log.Error("table is not playing")
-		return
-	}
-
-	d.IsPlaying = false
+func (d *Table) reportGameOver() {
 	d.OverAt = time.Now()
-
 	d.PublishEvent(&pb.BattleOverEvent{})
 }
 
@@ -209,14 +235,34 @@ func (d *Table) GetPlayer(uid int64) *Player {
 	return nil
 }
 
-func (d *Table) OnPlayerMessage(uid int64, topic string, iraw []byte) {
+func (d *Table) PublishEvent(eventmsg proto.Message) {
+	if d.EventPublisher == nil {
+		return
+	}
+
+	log.Infof("PublishEvent: %s: %v", string(proto.MessageName(eventmsg)), eventmsg)
+
+	raw, err := proto.Marshal(eventmsg)
+	if err != nil {
+		log.Error(err)
+		return
+	}
+	warp := &event.Event{
+		Topic:     string(proto.MessageName(eventmsg)),
+		Timestamp: time.Now().Unix(),
+		Data:      raw,
+	}
+	d.EventPublisher.Publish(warp)
+}
+
+func (d *Table) OnPlayerMessage(uid int64, msgid uint32, iraw []byte) {
 	// here is not safe
 	// msg := proto.Clone(fmsg).(*pb.BattleMessageWrap)
 
 	d.action <- func() {
 		p := d.GetPlayer(uid)
-		if p != nil && d.logic != nil {
-			d.logic.OnMessage(p, topic, iraw)
+		if p != nil && d.battle != nil {
+			d.battle.OnPlayerMessage(p, msgid, iraw)
 		}
 	}
 }

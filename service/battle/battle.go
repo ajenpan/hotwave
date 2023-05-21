@@ -6,31 +6,41 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-type SeatID = int32
+type SeatID int32
+type GameStatus int32
+type RoleType int32
+
+const (
+	BattleStatus_Idle GameStatus = iota
+	BattleStatus_Start
+	BattleStatus_Over
+)
+
+const (
+	RoleType_Player RoleType = iota
+	RoleType_Robot
+)
 
 type Player interface {
-	GetSeatID() int32
-	GetScore() int64 //game jetton
-	IsRobot() bool
+	SeatID() SeatID
+	Score() int64 //game jetton
+	Role() RoleType
 }
 
-type GameTable interface {
+type Table interface {
 	SendMessageToPlayer(Player, proto.Message)
 	BroadcastMessage(proto.Message)
-	PublishEvent(proto.Message)
 
-	ReportGameStart()
-	ReportGameOver()
+	ReportBattleStatus(GameStatus)
+	ReportBattleEvent(topic string, event proto.Message)
 }
 
-type GameStatus int16
-
-type GameLogic interface {
-	OnInit(desk GameTable, conf interface{}) error
+type Logic interface {
+	OnInit(t Table, conf interface{}) error
 	OnPlayerJoin([]Player) error
 	OnStart() error
 	OnTick(time.Duration)
 	OnReset()
-	OnMessage(p Player, topic string, data []byte)
-	OnEvent(topic string, event proto.Message)
+	OnPlayerMessage(p Player, msgid uint32, data []byte)
+	OnCommand(topic string, data []byte)
 }

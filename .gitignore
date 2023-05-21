@@ -4,6 +4,4 @@ log.txt
 *.log
 *.db
 *.exe
-/tools/gormt
-/plugins
 *.pem

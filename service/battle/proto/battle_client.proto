@@ -2,7 +2,7 @@ syntax = "proto3";
 
 package battle;
 
-option go_package = "service/battle/proto";
+option go_package = "/proto";
 
 message PlayerReadyRequest {
   string battle_id = 1;
@@ -16,4 +16,10 @@ message PlayerReadyResonse {
     int32 ready_state = 3;
   }
   repeated ReadyInfo ready_info = 1;
+}
+
+message GameMessageWrap {
+  string battle_id = 1;
+  int32 msgid = 2;
+  bytes data = 3;
 }

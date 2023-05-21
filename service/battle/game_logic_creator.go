@@ -10,22 +10,22 @@ type GameLogicCreator struct {
 	Store sync.Map
 }
 
-func (c *GameLogicCreator) Add(name string, creator func() GameLogic) error {
+func (c *GameLogicCreator) Add(name string, creator func() Logic) error {
 	c.Store.Store(name, creator)
 	return nil
 }
 
-func (c *GameLogicCreator) CreateLogic(name string) (GameLogic, error) {
+func (c *GameLogicCreator) CreateLogic(name string) (Logic, error) {
 	v, has := c.Store.Load(name)
 	if !has {
 		return nil, fmt.Errorf("game logic %s not found", name)
 	}
-	creator := v.(func() GameLogic)
+	creator := v.(func() Logic)
 	return creator(), nil
 }
 
 var LogicCreator = &GameLogicCreator{}
 
-func RegisterGame(name, version string, creator func() GameLogic) error {
+func RegisterGame(name, version string, creator func() Logic) error {
 	return LogicCreator.Add(strings.Join([]string{name, version}, "-"), creator)
 }

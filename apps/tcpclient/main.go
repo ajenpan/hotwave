@@ -1,62 +1,55 @@
 package main
 
 import (
-	"os"
+	"context"
+	"fmt"
 	"time"
 
 	log "hotwave/logger"
-	"hotwave/transport"
-	"hotwave/transport/tcp"
+	"hotwave/service/route/client"
+	routeMsg "hotwave/service/route/proto"
+	"hotwave/service/route/transport/tcp"
 	utilSignal "hotwave/utils/signal"
 )
 
-func reconnectFunc(s *tcp.Client) {
-	time.Sleep(2 * time.Second)
-
-	log.Info("reconnect to ", s.Opt.RemoteAddress)
-	err := s.Connect()
-	if err != nil {
-		log.Error(err)
-		go reconnectFunc(s)
-	}
-}
-
 func main() {
-	if len(os.Args) != 3 {
-		return
+	loginReq := &routeMsg.AdminLoginRequest{
+		Uid:   1,
+		Uname: "tcpclient",
+		Role:  "user",
 	}
-	remote := os.Args[1]
-	port := os.Args[2]
+	loginResp := &routeMsg.AdminLoginResponse{}
+	c := client.NewTcpClient("localhost:14321")
+	c.AuthFunc = func() bool {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		err := c.SyncCall(0, ctx, loginReq, loginResp)
+		ok := err == nil && loginResp.Errcode == 0
+		return ok
+	}
 
-	remoteAddr := remote + ":" + port
-	client := tcp.NewClient(&tcp.ClientOptions{
-		RemoteAddress: remoteAddr,
-		OnMessage: func(s *tcp.Client, p *tcp.Packet) {
-			p2 := tcp.CopyPacket(p)
-			go func() {
-				log.Info("OnMessage:", s.ID(), ", len:", p2.RawLen, ", typ:", p2.Typ)
-				time.Sleep(1 * time.Second)
-				err := s.SendPacket(p2)
-				if err != nil {
-					log.Info("response message failed:", err)
-				}
-			}()
-		},
-		OnConnStat: func(s *tcp.Client, state tcp.SocketStat) {
-			log.Info("OnConnStat:", state, " id:", s.ID())
-			if state == transport.Connected {
-				err := s.SendPacket(tcp.NewPacket(tcp.PacketTypePing, []byte("hello world")))
-				if err != nil {
-					log.Info("send failed", err)
-				}
-			} else {
-				go reconnectFunc(s)
+	c.OnLoginFunc = func(c *client.TcpClient, stat client.LoginStat) {
+		if stat == client.LoginStat_Success {
+			fmt.Println("login success")
+			req := &routeMsg.EchoRequest{
+				Msg: "hello",
 			}
-		},
-	})
-	defer client.Close()
+			client.SendRequestWithCB(c, 0, context.Background(), req, func(err error, c *client.TcpClient, resp *routeMsg.EchoResponse) {
+				if err != nil {
+					fmt.Println("send request failed:", err)
+				} else {
+					fmt.Println("recv resp:", resp.Msg)
+				}
+			})
+		} else {
+			fmt.Println("login failed")
+		}
+	}
 
-	go reconnectFunc(client)
+	c.OnMessageFunc = func(c *client.TcpClient, head tcp.RoutDeliverHead, p *tcp.PackFrame) {
+		fmt.Println("onmsg:", head.GetMsgID())
+	}
+	c.Reconnect()
 
 	s := utilSignal.WaitShutdown()
 	log.Infof("recv signal: %v", s.String())

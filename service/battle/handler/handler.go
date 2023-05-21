@@ -4,46 +4,39 @@ import (
 	"context"
 	"fmt"
 	"sync"
-	"time"
+	"sync/atomic"
 
+	"github.com/google/uuid"
 	protobuf "google.golang.org/protobuf/proto"
 
 	"hotwave/event"
-	"hotwave/marshal"
-	"hotwave/service/battle"
+	battle "hotwave/service/battle"
 	"hotwave/service/battle/proto"
 	"hotwave/service/battle/table"
-	"hotwave/transport"
 	"hotwave/utils/calltable"
 )
 
 type Handler struct {
 	battles sync.Map
-	users   sync.Map
 
 	LogicCreator *battle.GameLogicCreator
+	CT           *calltable.CallTable[int]
+	Publisher    event.Publisher
 
-	CT        *calltable.CallTable
-	marshaler *marshal.ProtoMarshaler
-
-	Publisher event.Publisher
+	createCounter int32
 }
 
 func New() *Handler {
 	h := &Handler{
 		LogicCreator: &battle.GameLogicCreator{},
-		marshaler:    &marshal.ProtoMarshaler{},
 	}
 
-	ct := calltable.ExtractParseGRpcMethod(proto.File_service_battle_proto_battle_server_proto.Services(), h)
+	h.CT = calltable.ExtractAsyncMethodByMsgID(proto.File_proto_battle_client_proto.Messages(), h)
 
-	h.CT = ct
 	return h
 }
 
-func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleRequest) (*proto.CreateBattleResponse, error) {
-	out := &proto.CreateBattleResponse{}
-
+func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest) (*proto.StartBattleResponse, error) {
 	if len(in.PlayerInfos) == 0 {
 		return nil, fmt.Errorf("player info is empty")
 	}
@@ -53,9 +46,13 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleReques
 		return nil, err
 	}
 
+	atomic.AddInt32(&h.createCounter, 1)
+
+	battleid := uuid.NewString() + fmt.Sprintf("-%d", h.createCounter)
 	d := table.NewTable(table.TableOption{
-		Conf:      in.BattleConf,
-		Publisher: h.Publisher,
+		ID:             battleid,
+		Conf:           in.BattleConf,
+		EventPublisher: h.Publisher,
 	})
 
 	players, err := table.NewPlayers(in.PlayerInfos)
@@ -63,54 +60,34 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.CreateBattleReques
 		return nil, err
 	}
 
-	err = d.Init(logic, players, in.GameConf)
+	err = d.Init(logic, players, in.BattleConf)
 	if err != nil {
 		return nil, err
 	}
 
-	_, exist := h.battles.LoadOrStore(d.ID, d)
-
-	if exist {
-		return out, fmt.Errorf("create failed")
+	err = d.Start()
+	if err != nil {
+		return nil, err
 	}
-	out.BattleId = d.ID
 
-	time.AfterFunc(1*time.Second, func() {
-		d.Start()
-	})
-	return out, nil
-}
+	h.battles.Store(battleid, d)
 
-func (h *Handler) StartBattle(ctx context.Context, in *proto.StartBattleRequest) (*proto.StartBattleResponse, error) {
-	out := &proto.StartBattleResponse{}
-
-	d := h.geBattleById(in.BattleId)
-	if d == nil {
-		return out, fmt.Errorf("battle not found")
+	out := &proto.StartBattleResponse{
+		BattleId: d.ID,
 	}
-	d.Start()
 	return out, nil
 }
 
 func (h *Handler) StopBattle(ctx context.Context, in *proto.StopBattleRequest) (*proto.StopBattleResponse, error) {
 	out := &proto.StopBattleResponse{}
 
-	d := h.geBattleById(in.BattleId)
+	d := h.getBattleById(in.BattleId)
 	if d == nil {
 		return out, fmt.Errorf("battle not found")
 	}
 	d.Close()
-	return out, nil
-}
 
-func (h *Handler) WatcherJoinBattle(ctx context.Context, in *proto.WatcherJoinBattleRequest) (*proto.WatcherJoinBattleResponse, error) {
-	out := &proto.WatcherJoinBattleResponse{}
-	d := h.geBattleById(in.BattleId)
-	if d == nil {
-		return out, fmt.Errorf("battle not found")
-	}
-
-	d.OnWatcherJoin()
+	h.battles.Delete(in.BattleId)
 	return out, nil
 }
 
@@ -118,27 +95,16 @@ func (h *Handler) OnEvent(topc string, msg protobuf.Message) {
 
 }
 
-func (h *Handler) OnUserConnStat(uid int64, ss transport.SessionStat) {
-
-}
-
-func (h *Handler) OnBattleMessage(uid int64, msg *proto.BattleMessageWrap) {
-	b := h.geBattleById(msg.BattleId)
+func (h *Handler) OnBattleMessageWrap(uid int64, msg *proto.GameMessageWrap) {
+	b := h.getBattleById(msg.BattleId)
 	if b == nil {
 		return
 	}
-	b.OnPlayerMessage(msg.Uid, msg.Topic, msg.Data)
+	b.OnPlayerMessage(uid, uint32(msg.Msgid), msg.Data)
 }
 
-func (h *Handler) geBattleById(battleId string) *table.Table {
+func (h *Handler) getBattleById(battleId string) *table.Table {
 	if raw, ok := h.battles.Load(battleId); ok {
-		return raw.(*table.Table)
-	}
-	return nil
-}
-
-func (h *Handler) geBattleByUid(uid int64) *table.Table {
-	if raw, ok := h.users.Load(uid); ok {
 		return raw.(*table.Table)
 	}
 	return nil
