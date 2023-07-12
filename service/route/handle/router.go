@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"fmt"
+	"hash/fnv"
 	"strconv"
 	"sync"
 	"time"
@@ -32,19 +33,19 @@ type Router struct {
 	user    sync.Map
 	session sync.Map
 
-	uid uint64
+	uid uint32
 
 	PublicKey *rsa.PublicKey
 	ct        *calltable.CallTable[int]
 }
 
 type UserInfo struct {
-	UID      uint64
+	UID      uint32
 	UserName string
 	Group    int64
 	Role     string
-
-	LoginAt time.Time
+	Groups   []string
+	LoginAt  time.Time
 }
 
 const uinfoKey string = "uinfo"
@@ -56,7 +57,7 @@ type tcpPacketKeyT struct{}
 var tcpSocketKey = tcpSocketKeyT{}
 var tcpPacketKey = tcpPacketKeyT{}
 
-func VerifyToken(pk *rsa.PublicKey, tokenRaw string) (uint64, string, string, error) {
+func VerifyToken(pk *rsa.PublicKey, tokenRaw string) (uint32, string, string, error) {
 	claims := make(jwt.MapClaims)
 	token, err := jwt.ParseWithClaims(tokenRaw, claims, func(t *jwt.Token) (interface{}, error) {
 		return pk, nil
@@ -71,7 +72,7 @@ func VerifyToken(pk *rsa.PublicKey, tokenRaw string) (uint64, string, string, er
 	uidstr := claims["uid"]
 	role := claims["role"]
 	uid, err := strconv.ParseUint(uidstr.(string), 10, 64)
-	return uid, uname.(string), role.(string), err
+	return uint32(uid), uname.(string), role.(string), err
 }
 
 func GetSocketUserInfo(s *tcp.Socket) *UserInfo {
@@ -102,14 +103,16 @@ func dealSocketErrCnt(s *tcp.Socket) {
 
 func (r *Router) OnMessage(s *tcp.Socket, p *tcp.PackFrame) {
 	ptype := p.GetType()
-	if ptype == tcp.PacketTypRoutDeliver {
-		head := tcp.RoutDeliverHead(p.Head)
-		targetid := head.GetTargetUID()
-		if targetid == 0 || targetid == r.uid {
-			r.OnCall(s, head, p)
+	if ptype == tcp.PacketTypRoute {
+		head, err := tcp.CastRoutHead(p.Head)
+		if err != nil {
 			return
 		}
-		var err error
+		targetid := head.GetTargetUID()
+		if targetid == 0 || targetid == r.uid {
+			r.OnCall(s, p, head, p.Body)
+			return
+		}
 
 		suid := s.UID()
 		if suid != 0 {
@@ -123,14 +126,8 @@ func (r *Router) OnMessage(s *tcp.Socket, p *tcp.PackFrame) {
 		} else {
 			err = fmt.Errorf("not login")
 		}
-
 		if err != nil {
-			p.SetType(tcp.PacketTypRoutErr)
-			p.Body = []byte(err.Error())
-			err = s.SendPacket(p)
-			if err != nil {
-				fmt.Println("send error failed:", err)
-			}
+			fmt.Println(err)
 		}
 	}
 }
@@ -149,7 +146,7 @@ func (r *Router) OnConn(s *tcp.Socket, stat tcp.SocketStat) {
 	}
 }
 
-func (r *Router) SendMessage(s *tcp.Socket, askid uint32, msgtyp uint8, m proto.Message) error {
+func (r *Router) SendMessage(s *tcp.Socket, askid uint32, msgtyp tcp.RouteMsgTyp, m proto.Message) error {
 	raw, err := proto.Marshal(m)
 	if err != nil {
 		return fmt.Errorf("marshal failed:%v", err)
@@ -160,7 +157,7 @@ func (r *Router) SendMessage(s *tcp.Socket, askid uint32, msgtyp uint8, m proto.
 		return fmt.Errorf("not found msgid:%v", msgid)
 	}
 
-	head := tcp.NewRoutDeliverHead()
+	head := tcp.NewRoutHead()
 	head.SetMsgID(uint32(msgid))
 	head.SetSrouceUID(r.uid)
 	head.SetTargetUID(s.UID())
@@ -168,21 +165,26 @@ func (r *Router) SendMessage(s *tcp.Socket, askid uint32, msgtyp uint8, m proto.
 	head.SetMsgTyp(msgtyp)
 
 	p := &tcp.PackFrame{
-		Head: head,
 		Body: raw,
 	}
-	p.SetType(tcp.PacketTypRoutDeliver)
+	p.SetType(tcp.PacketTypRoute)
+	p.SetBodyLen(uint32(len(raw)))
+	p.SetHeadLen(uint8(len(head)))
 	return s.SendPacket(p)
 }
 
-func (r *Router) GetSocketByUID(uid uint64) *tcp.Socket {
+func (r *Router) GetSocketByUID(uid uint32) *tcp.Socket {
 	if v, ok := r.user.Load(uid); ok {
 		return v.(*tcp.Socket)
 	}
 	return nil
 }
 
-func (r *Router) OnCall(s *tcp.Socket, head tcp.RoutDeliverHead, p *tcp.PackFrame) {
+func (r *Router) SetSocketUID(uid uint32, s *tcp.Socket) {
+	r.user.Store(uid, s)
+}
+
+func (r *Router) OnCall(s *tcp.Socket, p *tcp.PackFrame, head tcp.RouteHead, body []byte) {
 	var err error
 	msgid := int(head.GetMsgID())
 	askid := head.GetAskID()
@@ -200,7 +202,7 @@ func (r *Router) OnCall(s *tcp.Socket, head tcp.RoutDeliverHead, p *tcp.PackFram
 	}
 
 	req := reqRaw.(proto.Message)
-	err = proto.Unmarshal(p.Body, req)
+	err = proto.Unmarshal(body, req)
 
 	if err != nil {
 		fmt.Println(err)
@@ -222,8 +224,8 @@ func (r *Router) OnCall(s *tcp.Socket, head tcp.RoutDeliverHead, p *tcp.PackFram
 			return
 		}
 		respMsgTyp := head.GetMsgTyp()
-		if respMsgTyp == tcp.RoutTypRequest {
-			respMsgTyp = tcp.RoutTypResponse
+		if respMsgTyp == tcp.RouteTypRequest {
+			respMsgTyp = tcp.RouteTypResponse
 		}
 		r.SendMessage(s, askid, respMsgTyp, resp)
 		fmt.Printf("oncall sid:%v,uid:%v,msgid:%v,askid:%v,req:%v,resp:%v\n", s.ID(), s.UID(), msgid, askid, req, resp)
@@ -267,6 +269,10 @@ func (r *Router) OnLoginRequest(ctx context.Context, req *msg.LoginRequest) (*ms
 		return resp, nil
 	}
 
+	if olds := r.GetSocketByUID(uid); olds != nil {
+		olds.Close()
+	}
+
 	uinfo := &UserInfo{
 		UID:      uid,
 		UserName: uname,
@@ -274,32 +280,41 @@ func (r *Router) OnLoginRequest(ctx context.Context, req *msg.LoginRequest) (*ms
 	}
 	s := GetSocketFromCtx(ctx)
 
-	s.MetaStore(uinfoKey, uinfo)
-	s.SetUID(uid)
-	r.user.Store(uid, s)
+	r.handLoginScuess(s, uinfo)
+
 	resp.Errcode = msg.LoginResponse_ok
 	return resp, nil
 }
 
-func (r *Router) OnAdminLoginRequest(ctx context.Context, req *msg.AdminLoginRequest) (*msg.AdminLoginResponse, error) {
-	resp := &msg.AdminLoginResponse{
-		Errcode: msg.AdminLoginResponse_unkown_err,
-	}
-
-	uinfo := &UserInfo{
-		UID:      uint64(req.Uid),
-		UserName: req.Uname,
-		Role:     req.Role,
-	}
-
-	s := GetSocketFromCtx(ctx)
-
+func (r *Router) handLoginScuess(s *tcp.Socket, uinfo *UserInfo) {
 	s.MetaStore(uinfoKey, uinfo)
 	s.SetUID(uinfo.UID)
-	r.user.Store(uinfo.UID, s)
+	r.SetSocketUID(uinfo.UID, s)
+}
 
-	resp.Errcode = msg.AdminLoginResponse_ok
+func stringToInt64(s string) uint64 {
+	h := fnv.New64a()
+	h.Write([]byte(s))
+	return h.Sum64()
+}
 
+func (r *Router) OnAccountLoginRequest(ctx context.Context, req *msg.AccountLoginRequest) (*msg.AccountLoginResponse, error) {
+	resp := &msg.AccountLoginResponse{
+		Errcode: msg.AccountLoginResponse_unkown_err,
+	}
+
+	uid := stringToInt64(req.Account)
+	s := GetSocketFromCtx(ctx)
+
+	r.handLoginScuess(s, &UserInfo{
+		UID:      uint32(uid),
+		UserName: req.Account,
+		Role:     "user",
+	})
+
+	resp.Uinfo = &msg.UserInfo{
+		Uid: uid,
+	}
 	return resp, nil
 }
 

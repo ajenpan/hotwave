@@ -154,7 +154,7 @@ func RealMain(c *cli.Context) error {
 	return nil
 }
 
-func AuthMiddleWrap(f func(http.ResponseWriter, *http.Request)) func(http.ResponseWriter, *http.Request) {
+func AuthMiddleWrap(f func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
 	return func(w http.ResponseWriter, r *http.Request) {
 		f(w, r)
 	}

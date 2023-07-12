@@ -13,12 +13,12 @@ import (
 )
 
 func main() {
-	loginReq := &routeMsg.AdminLoginRequest{
-		Uid:   1,
-		Uname: "tcpclient",
-		Role:  "user",
+
+	loginReq := &routeMsg.AccountLoginRequest{
+		Account:  "test",
+		Password: "123456",
 	}
-	loginResp := &routeMsg.AdminLoginResponse{}
+	loginResp := &routeMsg.AccountLoginResponse{}
 	c := client.NewTcpClient("localhost:14321")
 	c.AuthFunc = func() bool {
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
@@ -46,8 +46,8 @@ func main() {
 		}
 	}
 
-	c.OnMessageFunc = func(c *client.TcpClient, head tcp.RoutDeliverHead, p *tcp.PackFrame) {
-		fmt.Println("onmsg:", head.GetMsgID())
+	c.OnMessageFunc = func(c *client.TcpClient, p *tcp.PackFrame) {
+
 	}
 	c.Reconnect()
 

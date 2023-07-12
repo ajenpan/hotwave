@@ -7,20 +7,18 @@ import (
 
 // Codec constants.
 const (
-	//16MB
-	MaxPacketSize = 1<<(3*8) - 1
+	//8MB 8388607
+	MaxPacketSize = 0x7FFFFF
 )
 
-// TODO: rand in packet
-
-var ErrWrongPacketHeadLen = errors.New("wrong packet head len")
 var ErrWrongPacketType = errors.New("wrong packet type")
-var ErrPacketSizeExcced = errors.New("packet size exceed")
-var ErrParseHead = errors.New("parse head error")
+var ErrBodySizeWrong = errors.New("packet body size error")
+var ErrHeadSizeWrong = errors.New("packet head size error")
+var ErrParseHead = errors.New("parse packet error")
 var ErrDisconn = errors.New("socket disconnected")
 
 // -<PacketType>-|-<HeadLen>-|-<BodyLen>-|-<Body>-
-// -1------------|-1---------|-4---------|--------
+// -1------------|-1---------|-3---------|--------
 
 type PacketType = uint8
 
@@ -29,122 +27,142 @@ const (
 	PacketTypInnerStartAt_ PacketType = iota
 	PacketTypHeartbeat
 	PacketTypAck
-	PacketTypInnerEndAt_
-)
-const (
+	PacketTypInnerEndAt_ PacketType = 0x0f
 	// user
-	PacketTypStartAt_ PacketType = iota + 10
-	PacketTypRout
-	PacketTypRoutDeliver
-	PacketTypRoutErr
-	PacketTypEndAt_
+	PacketTypStartAt_   PacketType = 0x0f
+	PacketTypRoute      PacketType = 0x0f + 1
+	PacketTypGroupBroad PacketType = 0x0f + 2
+	PacketTypEndAt_     PacketType = 0xff
 )
 
-type PacketHead [1 + 1 + 4]byte
+func Uint24(b []uint8) uint32 {
+	_ = b[2] // bounds check hint to compiler; see golang.org/issue/14808
+	return uint32(b[0]) | uint32(b[1])<<8 | uint32(b[2])<<16
+}
 
-func (hr *PacketHead) GetType() uint8 {
+func PutUint24(b []uint8, v uint32) {
+	_ = b[2] // early bounds check to guarantee safety of writes below
+	b[0] = uint8(v)
+	b[1] = uint8(v >> 8)
+	b[2] = uint8(v >> 16)
+}
+
+type PackMeta [1 + 1 + 3]uint8
+
+func (hr PackMeta) GetType() uint8 {
 	return hr[0]
 }
-func (hr *PacketHead) GetHeadLen() uint8 {
+func (hr PackMeta) GetHeadLen() uint8 {
 	return hr[1]
 }
-func (hr *PacketHead) GetBodyLen() uint32 {
-	return binary.LittleEndian.Uint32(hr[2:6])
+
+func (hr PackMeta) GetBodyLen() uint32 {
+	return Uint24(hr[2:5])
 }
 
-func (hr *PacketHead) SetType(t uint8) {
+func (hr PackMeta) SetType(t uint8) {
 	hr[0] = t
 }
-func (hr *PacketHead) SetHeadLen(t uint8) {
+
+func (hr PackMeta) SetHeadLen(t uint8) {
 	hr[1] = t
 }
-func (hr *PacketHead) SetBodyLen(l uint32) {
-	binary.LittleEndian.PutUint32(hr[2:6], l)
+
+func (hr PackMeta) SetBodyLen(l uint32) {
+	PutUint24(hr[2:4], l)
 }
 
-func (hr *PacketHead) Reset() {
+func (hr PackMeta) Reset() {
 	for i := 0; i < len(hr); i++ {
 		hr[i] = 0
 	}
 }
 
+func (hr PackMeta) Clone() PackMeta {
+	ret := PackMeta{}
+	copy(ret[:], hr[:])
+	return ret
+}
+
 type PackFrame struct {
-	PacketHead
-	Head []byte
-	Body []byte
+	PackMeta
+	Head []uint8
+	Body []uint8
 }
 
 func (p *PackFrame) Reset() {
-	p.PacketHead.Reset()
-	p.Head = p.Head[:0]
+	p.PackMeta.Reset()
 	p.Body = p.Body[:0]
 }
 
 func (p *PackFrame) Clone() *PackFrame {
 	return &PackFrame{
-		PacketHead: p.PacketHead,
-		Head:       p.Head[:],
-		Body:       p.Body[:],
+		PackMeta: p.PackMeta.Clone(),
+		Body:     p.Body[:],
 	}
 }
 
-// |-askid-|
-// |-4-----|
-// type RequestHead []byte
-// type ResponseHead []byte
-// type AsyncHead []byte
+type RouteHead []uint8
 
-type RoutDeliverHead []byte
-type RoutMsgTyp uint8
+const RouteHeadLen = 25
+
+type RouteMsgTyp uint8
 
 const (
-	RoutTypAsync = iota
-	RoutTypRequest
-	RoutTypResponse
+	RouteTypAsync RouteMsgTyp = iota
+	RouteTypRequest
+	RouteTypResponse
 )
 
-func NewRoutDeliverHead() RoutDeliverHead {
-	return make([]byte, 25)
+func CastRoutHead(head []uint8) (RouteHead, error) {
+	if len(head) != RouteHeadLen {
+		return nil, ErrHeadSizeWrong
+	}
+	return RouteHead(head), nil
 }
 
-func (h RoutDeliverHead) GetTargetUID() uint64 {
-	return binary.LittleEndian.Uint64(h[0:8])
+func NewRoutHead() RouteHead {
+	return make([]uint8, RouteHeadLen)
 }
 
-func (h RoutDeliverHead) GetSrouceUID() uint64 {
-	return binary.LittleEndian.Uint64(h[8:16])
+func (h RouteHead) GetTargetUID() uint32 {
+	return binary.LittleEndian.Uint32(h[0:4])
 }
 
-func (h RoutDeliverHead) GetAskID() uint32 {
+func (h RouteHead) GetSrouceUID() uint32 {
+	return binary.LittleEndian.Uint32(h[4:8])
+}
+
+func (h RouteHead) GetAskID() uint32 {
 	return binary.LittleEndian.Uint32(h[16:20])
 }
 
-func (h RoutDeliverHead) GetMsgID() uint32 {
+func (h RouteHead) GetMsgID() uint32 {
 	return binary.LittleEndian.Uint32(h[20:24])
 }
 
-func (h RoutDeliverHead) GetMsgTyp() uint8 {
-	return h[24]
+func (h RouteHead) GetMsgTyp() RouteMsgTyp {
+	return RouteMsgTyp(h[24])
 }
 
-func (h RoutDeliverHead) SetTargetUID(u uint64) {
-	binary.LittleEndian.PutUint64(h[0:8], u)
+func (h RouteHead) SetTargetUID(u uint32) {
+	binary.LittleEndian.PutUint32(h[0:4], u)
 }
 
-func (h RoutDeliverHead) SetSrouceUID(u uint64) {
-	binary.LittleEndian.PutUint64(h[8:16], u)
+func (h RouteHead) SetSrouceUID(u uint32) {
+	binary.LittleEndian.PutUint32(h[4:8], u)
 }
 
-func (h RoutDeliverHead) SetAskID(id uint32) {
+func (h RouteHead) SetAskID(id uint32) {
 	binary.LittleEndian.PutUint32(h[16:20], id)
 }
 
-func (h RoutDeliverHead) SetMsgID(id uint32) {
+func (h RouteHead) SetMsgID(id uint32) {
 	binary.LittleEndian.PutUint32(h[20:24], id)
 }
 
-func (h RoutDeliverHead) SetMsgTyp(typ uint8) {
-	h[24] = typ
+func (h RouteHead) SetMsgTyp(typ RouteMsgTyp) {
+	h[24] = uint8(typ)
 }
 
-type RoutErrHead RoutDeliverHead
+type RouteErrHead RouteHead

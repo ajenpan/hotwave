@@ -4,7 +4,6 @@ type FakeAuth struct {
 }
 
 func (a *FakeAuth) TokenAuth(token string) *UserInfo {
-
 	c++
 	return &UserInfo{
 		Uid:   c,

@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -13,7 +14,6 @@ const (
 	Disconnected SessionStat = 2
 )
 
-// TODO:
 type Packet interface {
 	Type() int
 	Name() string
@@ -56,4 +56,18 @@ type Session interface {
 	Send(Packet) error
 	Close()
 	SessionMeta
+}
+
+type MapMeta struct {
+	imp sync.Map
+}
+
+func (m *MapMeta) MetaLoad(key string) (interface{}, bool) {
+	return m.imp.Load(key)
+}
+func (m *MapMeta) MetaStore(key string, value interface{}) {
+	m.imp.Store(key, value)
+}
+func (m *MapMeta) MetaDelete(key string) {
+	m.imp.Delete(key)
 }

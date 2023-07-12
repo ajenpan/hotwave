@@ -1,12 +1,13 @@
 package tcp
 
 import (
-	"fmt"
 	"io"
 	"net"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"hotwave/service/route/transport/common"
 )
 
 type SocketStat int32
@@ -26,21 +27,7 @@ type SocketOptions struct {
 
 type SocketOption func(*SocketOptions)
 
-var staticIdx uint64
-
-func nextID() string {
-	idx := atomic.AddUint64(&staticIdx, 1)
-	if idx == 0 {
-		idx = atomic.AddUint64(&staticIdx, 1)
-	}
-	return fmt.Sprintf("tcp_%v_%v", idx, time.Now().Unix())
-}
-
 func NewSocket(conn net.Conn, opts SocketOptions) *Socket {
-	if opts.ID == "" {
-		opts.ID = nextID()
-	}
-
 	ret := &Socket{
 		id:       opts.ID,
 		conn:     conn,
@@ -61,7 +48,7 @@ type Socket struct {
 	conn     net.Conn   // low-level conn fd
 	state    SocketStat // current state
 	id       string
-	uid      uint64
+	uid      uint32
 	chSend   chan *PackFrame // push message queue
 	chClosed chan bool
 
@@ -70,17 +57,17 @@ type Socket struct {
 	lastSendAt uint64
 	lastRecvAt uint64
 
-	store sync.Map
-
-	askididx uint32
+	askidIdx uint32
 
 	packetpool sync.Pool
+
+	common.MapMeta
 }
 
 func (s *Socket) GetAskID() uint32 {
-	ret := atomic.AddUint32(&s.askididx, 1)
+	ret := atomic.AddUint32(&s.askidIdx, 1)
 	if ret == 0 {
-		ret = atomic.AddUint32(&s.askididx, 1)
+		ret = atomic.AddUint32(&s.askidIdx, 1)
 	}
 	return ret
 }
@@ -89,20 +76,26 @@ func (s *Socket) ID() string {
 	return s.id
 }
 
-func (s *Socket) UID() uint64 {
-	return atomic.LoadUint64(&s.uid)
+func (s *Socket) UID() uint32 {
+	return atomic.LoadUint32(&s.uid)
 }
 
-func (s *Socket) SetUID(uid uint64) {
-	atomic.StoreUint64(&s.uid, uid)
+func (s *Socket) SetUID(uid uint32) {
+	atomic.StoreUint32(&s.uid, uid)
 }
 
 func (s *Socket) SendPacket(p *PackFrame) error {
 	if atomic.LoadInt32((*int32)(&s.state)) == int32(Disconnected) {
 		return ErrDisconn
 	}
-	if len(p.Body) > MaxPacketSize {
-		return ErrPacketSizeExcced
+	if len(p.Body) > MaxPacketSize || len(p.Body) != int(p.GetBodyLen()) {
+		return ErrBodySizeWrong
+	}
+	if len(p.Head) != int(p.GetHeadLen()) {
+		return ErrHeadSizeWrong
+	}
+	if p.GetType() <= PacketTypEndAt_ || p.GetType() >= PacketTypEndAt_ {
+		return ErrWrongPacketType
 	}
 	s.chSend <- p
 	return nil
@@ -184,14 +177,12 @@ func (s *Socket) readPacket(p *PackFrame) error {
 		s.conn.SetReadDeadline(time.Now().Add(s.timeOut))
 	}
 
-	_, err = io.ReadFull(s.conn, p.PacketHead[:])
+	_, err = io.ReadFull(s.conn, p.PackMeta[:])
 	if err != nil {
 		return err
 	}
 
-	//TODO: use buffer pool impove this performance
-
-	headlen := uint32(p.GetHeadLen())
+	headlen := p.GetHeadLen()
 	if headlen > 0 {
 		p.Head = make([]byte, headlen)
 		_, err = io.ReadFull(s.conn, p.Head)
@@ -199,6 +190,7 @@ func (s *Socket) readPacket(p *PackFrame) error {
 			return err
 		}
 	}
+
 	bodylen := p.GetBodyLen()
 	if bodylen > 0 {
 		p.Body = make([]byte, bodylen)
@@ -216,23 +208,24 @@ func (s *Socket) writePacket(p *PackFrame) error {
 	if s.Status() == Disconnected {
 		return ErrDisconn
 	}
-
-	var err error
-
+	if int(p.GetHeadLen()) != len(p.Head) {
+		return ErrParseHead
+	}
+	if int(p.GetBodyLen()) != len(p.Body) {
+		return ErrParseHead
+	}
 	if len(p.Body) >= MaxPacketSize {
-		return ErrPacketSizeExcced
+		return ErrBodySizeWrong
 	}
 
-	p.SetHeadLen(uint8(len(p.Head)))
-	p.SetBodyLen(uint32(len(p.Body)))
-
-	_, err = writeAll(s.conn, p.PacketHead[:])
+	var err error
+	_, err = writeAll(s.conn, p.PackMeta[:])
 	if err != nil {
 		return err
 	}
 
 	if len(p.Head) > 0 {
-		_, err = writeAll(s.conn, p.Head[:])
+		_, err = writeAll(s.conn, p.Head)
 		if err != nil {
 			return err
 		}
@@ -247,16 +240,4 @@ func (s *Socket) writePacket(p *PackFrame) error {
 
 	atomic.StoreUint64(&s.lastSendAt, uint64(time.Now().Unix()))
 	return nil
-}
-
-func (m *Socket) MetaLoad(key string) (interface{}, bool) {
-	return m.store.Load(key)
-}
-
-func (m *Socket) MetaStore(key string, value interface{}) {
-	m.store.Store(key, value)
-}
-
-func (m *Socket) MetaDelete(key string) {
-	m.store.Delete(key)
 }

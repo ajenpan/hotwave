@@ -1,10 +1,22 @@
 package tcp
 
 import (
+	"fmt"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 )
+
+var staticIdx uint64
+
+func nextID() string {
+	idx := atomic.AddUint64(&staticIdx, 1)
+	if idx == 0 {
+		idx = atomic.AddUint64(&staticIdx, 1)
+	}
+	return fmt.Sprintf("tcp_%v_%v", idx, time.Now().Unix())
+}
 
 type ServerOptions struct {
 	Address          string

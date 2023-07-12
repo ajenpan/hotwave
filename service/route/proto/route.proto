@@ -4,7 +4,10 @@ package route;
 
 option go_package = "./proto";
 
-message UserInfo {}
+
+message UserInfo {
+  uint64 uid = 1;
+}
 
 message LoginRequest {
   enum MSGID {
@@ -29,27 +32,28 @@ message LoginResponse {
   UserInfo uinfo = 2;
 }
 
-message AdminLoginRequest {
+message AccountLoginRequest {
   enum MSGID {
     INVALID_MSGID = 0;
     ID = 102;
   }
-  int32 uid = 1;
-  string uname = 2;
-  string role = 3;
+  string account = 1;
+  string password = 2;
 }
 
-message AdminLoginResponse {
+message AccountLoginResponse {
   enum MSGID {
     INVALID_MSGID = 0;
     ID = 103;
   }
+
   enum ErrCode {
     ok = 0;
     unkown_err = 1;
     invalid_token = 11;
   }
   ErrCode errcode = 1;
+  UserInfo uinfo = 2;
 }
 
 message EchoRequest {

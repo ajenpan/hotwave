@@ -67,7 +67,7 @@ func (c *Client) Connect() error {
 		socket.Close()
 		return fmt.Errorf("read ack failed, typ: %d", p.GetType())
 	}
-
+	socket.id = string(p.Body)
 	c.Socket = socket
 
 	if len(p.Body) > 0 {
