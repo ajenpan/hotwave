@@ -2,6 +2,7 @@ package handler
 
 import (
 	"context"
+	"encoding/binary"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -10,9 +11,11 @@ import (
 	protobuf "google.golang.org/protobuf/proto"
 
 	"hotwave/event"
+	log "hotwave/logger"
 	battle "hotwave/service/battle"
 	"hotwave/service/battle/proto"
 	"hotwave/service/battle/table"
+	"hotwave/transport/tcp"
 	"hotwave/utils/calltable"
 )
 
@@ -20,7 +23,7 @@ type Handler struct {
 	battles sync.Map
 
 	LogicCreator *battle.GameLogicCreator
-	CT           *calltable.CallTable[int]
+	ct           *calltable.CallTable[int]
 	Publisher    event.Publisher
 
 	createCounter int32
@@ -30,9 +33,7 @@ func New() *Handler {
 	h := &Handler{
 		LogicCreator: &battle.GameLogicCreator{},
 	}
-
-	h.CT = calltable.ExtractAsyncMethodByMsgID(proto.File_proto_battle_client_proto.Messages(), h)
-
+	h.ct = calltable.ExtractAsyncMethodByMsgID(proto.File_proto_battle_client_proto.Messages(), h)
 	return h
 }
 
@@ -100,7 +101,7 @@ func (h *Handler) OnBattleMessageWrap(uid int64, msg *proto.GameMessageWrap) {
 	if b == nil {
 		return
 	}
-	b.OnPlayerMessage(uid, uint32(msg.Msgid), msg.Data)
+	b.OnPlayerMessage(uid, int(msg.Msgid), msg.Data)
 }
 
 func (h *Handler) getBattleById(battleId string) *table.Table {
@@ -108,4 +109,46 @@ func (h *Handler) getBattleById(battleId string) *table.Table {
 		return raw.(*table.Table)
 	}
 	return nil
+}
+
+func (h *Handler) OnConn(s *tcp.Socket, ss tcp.SocketStat) {
+	if ss == tcp.Disconnected && s.UID() != 0 {
+		log.Infof("disconnect")
+	}
+}
+
+func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
+	body := ss.GetBody()
+	ctype := ss.GetType()
+
+	if len(body) < 4 {
+		log.Errorf("invalid message, body len: %d", len(body))
+		return
+	}
+
+	msgid := int(binary.LittleEndian.Uint32(body))
+	method := h.ct.Get(msgid)
+	if method == nil {
+		return
+	}
+
+	req := method.NewRequest()
+	method.Marshal.Unmarshal(body[4:], req)
+
+	if ctype == 4 {
+		res := method.Call(h, req)
+		ss.Reset()
+		respi := res[0]
+
+		respraw, err := method.Marshal.Marshal(respi)
+		if err != nil {
+			return
+		}
+
+		respHead := make([]byte, 4)
+		binary.LittleEndian.PutUint32(respHead, method.ResponseID)
+		ss.Body = append(respHead, respraw...)
+		s.SendPacket(ss)
+	}
+
 }

@@ -2,6 +2,7 @@ package calltable
 
 import (
 	"context"
+	"hotwave/utils/marshal"
 	"reflect"
 	"strings"
 
@@ -55,6 +56,7 @@ func ExtractParseGRpcMethod(ms protoreflect.ServiceDescriptors, h interface{}) *
 				Style:        StyleGRpc,
 				RequestType:  reqType,
 				ResponseType: respType,
+				Marshal:      &marshal.ProtoMarshaler{},
 			}
 			m.InitPool()
 
@@ -96,6 +98,7 @@ func ExtractAsyncMethod(ms protoreflect.MessageDescriptors, h interface{}) *Call
 			Imp:         method,
 			Style:       StyleAsync,
 			RequestType: reqMsgType.Elem(),
+			Marshal:     &marshal.ProtoMarshaler{},
 		}
 		m.InitPool()
 		ret.list[fullName] = m
@@ -163,6 +166,7 @@ func ExtractAsyncMethodByMsgID(ms protoreflect.MessageDescriptors, h interface{}
 			Imp:         method,
 			Style:       StyleAsync,
 			RequestType: reqMsgType.Elem(),
+			Marshal:     &marshal.ProtoMarshaler{},
 		}
 		m.InitPool()
 		ret.Add(msgid, m)

@@ -28,7 +28,7 @@ func (gl *NoopLogic) OnTick(time.Duration) {
 func (gl *NoopLogic) OnReset() {
 
 }
-func (gl *NoopLogic) OnPlayerMessage(p battle.Player, msgid uint32, data []byte) {
+func (gl *NoopLogic) OnPlayerMessage(p battle.Player, msgid int, data []byte) {
 
 }
 func (gl *NoopLogic) OnCommand(topic string, data []byte) {

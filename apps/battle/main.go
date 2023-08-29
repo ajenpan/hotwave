@@ -9,6 +9,10 @@ import (
 	"github.com/urfave/cli/v2"
 
 	_ "hotwave/games/niuniu"
+	"hotwave/logger"
+	battleHandler "hotwave/service/battle/handler"
+	"hotwave/transport/tcp"
+	utilSignal "hotwave/utils/signal"
 )
 
 var (
@@ -51,4 +55,28 @@ func Run() error {
 
 	err := app.Run(os.Args)
 	return err
+}
+
+var listenAt string = ":12345"
+
+func RealMain(c *cli.Context) error {
+
+	h := battleHandler.New()
+
+	listener, err := tcp.NewServer(tcp.ServerOptions{
+		Address:   listenAt,
+		OnMessage: h.OnMessage,
+		OnConn:    h.OnConn,
+	})
+
+	if err != nil {
+		panic(err)
+	}
+
+	go listener.Start()
+	defer listener.Stop()
+
+	s := utilSignal.WaitShutdown()
+	logger.Infof("recv signal: %v", s.String())
+	return nil
 }

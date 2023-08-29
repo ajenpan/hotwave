@@ -7,12 +7,11 @@ import (
 	"time"
 
 	nncard "github.com/ajenpan/poker_algorithm/niuniu"
+	"github.com/sirupsen/logrus"
 	protobuf "google.golang.org/protobuf/proto"
 
 	"hotwave/service/battle"
 	"hotwave/utils/calltable"
-
-	log "hotwave/logger"
 )
 
 func CreateLogic() battle.Logic {
@@ -21,7 +20,6 @@ func CreateLogic() battle.Logic {
 
 func CreateNiuniu() *Niuniu {
 	ret := &Niuniu{
-		log:     log.New(),
 		players: make(map[int32]*NNPlayer),
 		info:    &GameInfo{},
 		conf:    &Config{},
@@ -30,7 +28,7 @@ func CreateNiuniu() *Niuniu {
 }
 
 func init() {
-	battle.RegisterGame("niuniu", "1.1.0", CreateLogic)
+	battle.RegisterGame("niuniu", "1.0.0", CreateLogic)
 }
 
 type NNPlayer struct {
@@ -55,7 +53,7 @@ func ParseConfig(raw []byte) (*Config, error) {
 type Niuniu struct {
 	table battle.Table
 	conf  *Config
-	log   *log.Logger
+	log   *logrus.Logger
 
 	info    *GameInfo
 	players map[int32]*NNPlayer // seatid to player
@@ -108,12 +106,13 @@ func (nn *Niuniu) OnStart() error {
 	nn.ChangeLogicStep(GameStep_BEGIN)
 	return nil
 }
+
 func (nn *Niuniu) OnCommand(topic string, data []byte) {
 
 }
-func (nn *Niuniu) OnPlayerMessage(p battle.Player, msgid uint32, raw []byte) {
-	nn.log.Infof("recv msgid:%s", msgid)
 
+func (nn *Niuniu) OnPlayerMessage(p battle.Player, msgid int, raw []byte) {
+	nn.log.Infof("recv msgid:%d", msgid)
 }
 
 func (nn *Niuniu) OnEvent(topic string, event protobuf.Message) {
@@ -129,10 +128,10 @@ func (nn *Niuniu) GameDeskInfoRequest(p battle.Player, req *GameDeskInfoRequest)
 
 func (nn *Niuniu) checkStat(p *NNPlayer, expect GameStep) error {
 	if nn.getLogicStep() == expect {
-		return fmt.Errorf("游戏状态错误")
+		return fmt.Errorf("game status error")
 	}
 	if p.Status != previousStep(expect) {
-		return fmt.Errorf("用户状态错误")
+		return fmt.Errorf("player status error")
 	}
 	return nil
 }

@@ -3,6 +3,8 @@ package calltable
 import (
 	"reflect"
 	"sync"
+
+	"hotwave/utils/marshal"
 )
 
 type MethodStyle int
@@ -24,6 +26,11 @@ type Method struct {
 
 	RequestType  reflect.Type
 	ResponseType reflect.Type
+
+	RequestID  uint32
+	ResponseID uint32
+
+	Marshal marshal.Marshaler
 
 	reqPool  *sync.Pool
 	respPool *sync.Pool
@@ -48,16 +55,10 @@ func (m *Method) Call(args ...interface{}) []reflect.Value {
 }
 
 func (m *Method) NewRequest() interface{} {
-	if m.RequestType == nil {
-		return nil
-	}
 	return reflect.New(m.RequestType).Interface()
 }
 
 func (m *Method) NewResponse() interface{} {
-	if m.ResponseType == nil {
-		return nil
-	}
 	return reflect.New(m.ResponseType).Interface()
 }
 

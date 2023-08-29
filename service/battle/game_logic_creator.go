@@ -6,6 +6,12 @@ import (
 	"sync"
 )
 
+var LogicCreator = &GameLogicCreator{}
+
+func RegisterGame(name, version string, creator func() Logic) error {
+	return LogicCreator.Add(strings.Join([]string{name, version}, "-"), creator)
+}
+
 type GameLogicCreator struct {
 	Store sync.Map
 }
@@ -22,10 +28,4 @@ func (c *GameLogicCreator) CreateLogic(name string) (Logic, error) {
 	}
 	creator := v.(func() Logic)
 	return creator(), nil
-}
-
-var LogicCreator = &GameLogicCreator{}
-
-func RegisterGame(name, version string, creator func() Logic) error {
-	return LogicCreator.Add(strings.Join([]string{name, version}, "-"), creator)
 }

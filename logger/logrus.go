@@ -4,11 +4,9 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-type Logger = logrus.Logger
+var Default *logrus.Logger
 
-var Default *Logger
-
-func New() *Logger {
+func New() *logrus.Logger {
 	return logrus.New()
 }
 

@@ -86,7 +86,7 @@ func (d *Table) Init(logic bf.Logic, players []*Player, logicConf interface{}) e
 	switch conf := d.Conf.StartCondition.(type) {
 	case *pb.BattleConfigure_Delayed:
 		if conf.Delayed > 0 {
-			log.Info("start table after %d seconds", conf.Delayed)
+			log.Infof("start table after %d seconds", conf.Delayed)
 			time.AfterFunc(time.Duration(conf.Delayed)*time.Second, func() {
 				err := d.Start()
 				if err != nil {
@@ -101,6 +101,12 @@ func (d *Table) pushAction(f func()) {
 	d.action <- f
 }
 
+func (d *Table) AfterFunc(td time.Duration, f func()) {
+	time.AfterFunc(td, func() {
+		d.pushAction(f)
+	})
+}
+
 func (d *Table) Start() error {
 	d.rwlock.Lock()
 	defer d.rwlock.Unlock()
@@ -109,7 +115,7 @@ func (d *Table) Start() error {
 		safecall := func(f func()) {
 			defer func() {
 				if err := recover(); err != nil {
-					log.Error("panic: %v", err)
+					log.Errorf("panic: %v", err)
 				}
 			}()
 			f()
@@ -187,9 +193,9 @@ func (d *Table) SendMessageToPlayer(p bf.Player, msg proto.Message) {
 
 	err := rp.SendMessage(msg)
 	if err != nil {
-		log.Error("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
+		log.Errorf("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
 	} else {
-		log.Debug("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
+		log.Debugf("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
 	}
 }
 
@@ -255,7 +261,7 @@ func (d *Table) PublishEvent(eventmsg proto.Message) {
 	d.EventPublisher.Publish(warp)
 }
 
-func (d *Table) OnPlayerMessage(uid int64, msgid uint32, iraw []byte) {
+func (d *Table) OnPlayerMessage(uid int64, msgid int, iraw []byte) {
 	// here is not safe
 	// msg := proto.Clone(fmsg).(*pb.BattleMessageWrap)
 
