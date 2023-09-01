@@ -52,6 +52,7 @@ func Run() error {
 	app := cli.NewApp()
 	app.Version = Version
 	app.Name = Name
+	app.Action = RealMain
 
 	err := app.Run(os.Args)
 	return err
@@ -67,6 +68,13 @@ func RealMain(c *cli.Context) error {
 		Address:   listenAt,
 		OnMessage: h.OnMessage,
 		OnConn:    h.OnConn,
+		AuthTokenChecker: func(s string) (*tcp.UserInfo, error) {
+			return &tcp.UserInfo{
+				Uid:   1,
+				Uname: "1",
+				Role:  "test",
+			}, nil
+		},
 	})
 
 	if err != nil {

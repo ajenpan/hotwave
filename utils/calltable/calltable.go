@@ -3,8 +3,6 @@ package calltable
 import (
 	"reflect"
 	"sync"
-
-	"hotwave/utils/marshal"
 )
 
 type MethodStyle int
@@ -24,13 +22,14 @@ type Method struct {
 	Imp   reflect.Method
 	Style MethodStyle
 
+	H  interface{}
+	hv reflect.Value
+
 	RequestType  reflect.Type
 	ResponseType reflect.Type
 
 	RequestID  uint32
 	ResponseID uint32
-
-	Marshal marshal.Marshaler
 
 	reqPool  *sync.Pool
 	respPool *sync.Pool
@@ -47,9 +46,10 @@ func (m *Method) InitPool() {
 }
 
 func (m *Method) Call(args ...interface{}) []reflect.Value {
-	values := make([]reflect.Value, len(args))
+	values := make([]reflect.Value, len(args)+1)
+	values[0] = m.hv
 	for i, v := range args {
-		values[i] = reflect.ValueOf(v)
+		values[i+1] = reflect.ValueOf(v)
 	}
 	return m.Imp.Func.Call(values)
 }

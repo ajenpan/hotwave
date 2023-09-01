@@ -4,14 +4,14 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-var Default *logrus.Logger
+var Default Logger
 
 func New() *logrus.Logger {
 	return logrus.New()
 }
 
 func init() {
-	Default = New()
+	log := New()
 	// Default.SetOutput(io.MultiWriter(Default.Out, output))
 	// Default.SetOutput(output)
 	// Default.SetFormatter(&logrus.TextFormatter{
@@ -22,7 +22,8 @@ func init() {
 	// 	TimestampFormat: "2006-01-02 15:04:05.000",
 	// 	NoColors:        true,
 	// })
-	Default.SetLevel(logrus.DebugLevel)
+	log.SetLevel(logrus.DebugLevel)
+	Default = log
 }
 
 func SetLevel(lvstr string) {
@@ -30,13 +31,8 @@ func SetLevel(lvstr string) {
 	if err != nil {
 		Default.Error(err)
 	} else {
-		Default.SetLevel(lv)
+		Default.(*logrus.Logger).SetLevel(lv)
 	}
-}
-
-// Tracef logs a message at level Trace on the standard logger.
-func Tracef(format string, args ...interface{}) {
-	Default.Tracef(format, args...)
 }
 
 // Debugf logs a message at level Debug on the standard logger.
@@ -46,7 +42,7 @@ func Debugf(format string, args ...interface{}) {
 
 // Printf logs a message at level Info on the standard logger.
 func Printf(format string, args ...interface{}) {
-	Default.Printf(format, args...)
+	Default.Infof(format, args...)
 }
 
 // Infof logs a message at level Info on the standard logger.
@@ -59,24 +55,9 @@ func Warnf(format string, args ...interface{}) {
 	Default.Warnf(format, args...)
 }
 
-// Warningf logs a message at level Warn on the standard logger.
-func Warningf(format string, args ...interface{}) {
-	Default.Warningf(format, args...)
-}
-
 // Errorf logs a message at level Error on the standard logger.
 func Errorf(format string, args ...interface{}) {
 	Default.Errorf(format, args...)
-}
-
-// Panicf logs a message at level Panic on the standard logger.
-func Panicf(format string, args ...interface{}) {
-	Default.Panicf(format, args...)
-}
-
-// Fatalf logs a message at level Fatal on the standard logger then the process will exit with status set to 1.
-func Fatalf(format string, args ...interface{}) {
-	Default.Fatalf(format, args...)
 }
 
 // Debug logs a message at level Debug on the standard logger.
@@ -86,7 +67,7 @@ func Debug(args ...interface{}) {
 
 // Print logs a message at level Info on the standard logger.
 func Print(args ...interface{}) {
-	Default.Print(args...)
+	Default.Info(args...)
 }
 
 // Info logs a message at level Info on the standard logger.
@@ -99,17 +80,7 @@ func Warn(args ...interface{}) {
 	Default.Warn(args...)
 }
 
-// Warning logs a message at level Warn on the standard logger.
-func Warning(args ...interface{}) {
-	Default.Warning(args...)
-}
-
 // Error logs a message at level Error on the standard logger.
 func Error(args ...interface{}) {
 	Default.Error(args...)
-}
-
-// Panic logs a message at level Panic on the standard logger.
-func Panic(args ...interface{}) {
-	Default.Panic(args...)
 }

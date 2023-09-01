@@ -10,20 +10,17 @@ type LocalAuth struct {
 	PK *rsa.PublicKey
 }
 
-func (a *LocalAuth) TokenAuth(token string) *UserInfo {
-	if len(token) < 10 {
-		return nil
-	}
+func (a *LocalAuth) TokenAuth(token string) (*UserInfo, error) {
 
 	uid, uname, err := common.VerifyToken(a.PK, token)
 	if err != nil {
-		return nil
+		return nil, err
 	}
 
 	return &UserInfo{
 		Uid:   uid,
 		Uname: uname,
-	}
+	}, nil
 }
 
 var c = int64(0)

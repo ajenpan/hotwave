@@ -2,6 +2,7 @@ package tcp
 
 import (
 	"net"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -43,11 +44,38 @@ func NewSocket(conn net.Conn, opts SocketOptions) *Socket {
 	return ret
 }
 
+type MapMeta struct {
+	imp sync.Map
+}
+
+func (m *MapMeta) MetaLoad(key string) (interface{}, bool) {
+	return m.imp.Load(key)
+}
+func (m *MapMeta) MetaStore(key string, value interface{}) {
+	m.imp.Store(key, value)
+}
+func (m *MapMeta) MetaDelete(key string) {
+	m.imp.Delete(key)
+}
+
+type UserInfo struct {
+	Uid   uint32
+	Uname string
+	Role  string
+}
+
+func (u *UserInfo) UID() uint32 {
+	return u.Uid
+}
+
 type Socket struct {
-	conn     net.Conn   // low-level conn fd
-	state    SocketStat // current state
-	id       string
-	uid      uint32
+	*UserInfo
+	MapMeta
+
+	conn  net.Conn   // low-level conn fd
+	state SocketStat // current state
+	id    string
+
 	chSend   chan Packet // push message queue
 	chClosed chan bool
 
@@ -59,14 +87,6 @@ type Socket struct {
 
 func (s *Socket) ID() string {
 	return s.id
-}
-
-func (s *Socket) UID() uint32 {
-	return atomic.LoadUint32(&s.uid)
-}
-
-func (s *Socket) SetUID(uid uint32) {
-	atomic.StoreUint32(&s.uid, uid)
 }
 
 func (s *Socket) SendPacket(p Packet) error {

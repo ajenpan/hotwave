@@ -59,7 +59,7 @@ func (c *Client) Connect() error {
 
 	//send ack
 	p := NewEmptyTHVPacket()
-	p.SetType(PacketTypAck)
+	p.SetType(PacketTypeAck)
 	err = socket.writePacket(p)
 	if err != nil {
 		socket.Close()
@@ -72,7 +72,7 @@ func (c *Client) Connect() error {
 		socket.Close()
 		return err
 	}
-	if p.GetType() != PacketTypAck {
+	if p.GetType() != PacketTypeAck {
 		socket.Close()
 		return fmt.Errorf("read ack failed, typ: %d", p.GetType())
 	}
@@ -102,7 +102,7 @@ func (c *Client) Connect() error {
 			defer tk.Stop()
 
 			heartbeatPakcet := NewEmptyTHVPacket()
-			heartbeatPakcet.SetType(PacketTypHeartbeat)
+			heartbeatPakcet.SetType(PacketTypeHeartbeat)
 
 			for {
 				select {
@@ -128,7 +128,7 @@ func (c *Client) Connect() error {
 			}
 
 			typ := p.GetType()
-			if typ > PacketTypInnerEndAt_ {
+			if typ > PacketTypeInnerEndAt_ {
 				if c.Opt.OnMessage != nil {
 					c.Opt.OnMessage(socket, p)
 				}

@@ -24,6 +24,7 @@ type ServerOptions struct {
 	OnMessage        OnMessageFunc
 	OnConn           OnConnStatFunc
 	NewIDFunc        NewIDFunc
+	AuthTokenChecker func(string) (*UserInfo, error)
 }
 
 type ServerOption func(*ServerOptions)
@@ -122,7 +123,7 @@ func (n *Server) accept(socket *Socket) {
 		return
 	}
 
-	if ack.GetType() != PacketTypAck {
+	if ack.GetType() != PacketTypeAck {
 		return
 	}
 
@@ -132,7 +133,31 @@ func (n *Server) accept(socket *Socket) {
 		return
 	}
 
-	// after ack, the connection is established
+	// auth
+	ack.Reset()
+	if err := socket.readPacket(ack); err != nil {
+		return
+	}
+
+	if ack.GetType() != PacketTypeAuth {
+		return
+	}
+
+	if n.opts.AuthTokenChecker != nil {
+		var err error
+		if socket.UserInfo, err = n.opts.AuthTokenChecker(string(ack.GetBody())); err != nil {
+			ack.Body = []uint8(err.Error())
+			socket.writePacket(ack)
+			return
+		}
+	}
+
+	ack.SetBody([]byte("ok"))
+	if err := socket.writePacket(ack); err != nil {
+		return
+	}
+
+	// the connection is established
 	go socket.writeWork()
 	n.storeSocket(socket)
 	defer n.removeSocket(socket)
@@ -152,10 +177,10 @@ func (n *Server) accept(socket *Socket) {
 		}
 
 		typ := p.GetType()
-
-		if typ > PacketTypHeartbeat && typ < PacketTypInnerEndAt_ {
+		if typ <= PacketTypeInnerEndAt_ {
 			switch typ {
-			case PacketTypHeartbeat:
+			case PacketTypeHeartbeat:
+				fallthrough
 			case PacketTypeEcho:
 				socket.SendPacket(p)
 			}

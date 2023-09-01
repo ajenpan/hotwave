@@ -140,12 +140,13 @@ func (h *Auth) UserInfo(ctx context.Context, in *msg.UserInfoRequest) (*msg.User
 		// h.Cache.StoreUser(ctx, &cache.AuthCacheInfo{User: user}, time.Hour)
 	}
 
-	out := &msg.UserInfoResponse{}
-	out.Info = &msg.UserInfo{
-		Uid:     user.UID,
-		Uname:   user.Uname,
-		Stat:    int32(user.Stat),
-		Created: user.CreateAt.Unix(),
+	out := &msg.UserInfoResponse{
+		Info: &msg.UserInfo{
+			Uid:     user.UID,
+			Uname:   user.Uname,
+			Stat:    int32(user.Stat),
+			Created: user.CreateAt.Unix(),
+		},
 	}
 	return out, nil
 }
@@ -188,6 +189,7 @@ func (h *Auth) Register(ctx context.Context, in *msg.RegisterRequest) (*msg.Regi
 func (h *Auth) PublicKeys(ctx context.Context, in *msg.PublicKeysRequest) (*msg.PublicKeysResponse, error) {
 	return &msg.PublicKeysResponse{Keys: h.PublicKey}, nil
 }
+
 func (h *Auth) AnonymousLogin(ctx context.Context, in *msg.AnonymousLoginRequest) (*msg.LoginResponse, error) {
 	return nil, nil
 }

@@ -26,6 +26,13 @@
             "program": "${workspaceRoot}/apps/auth",
         },
         {
+            "name": "battle",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceRoot}/apps/battle",
+        },
+        {
             "name": "Launch tcpclient",
             "type": "go",
             "request": "launch",

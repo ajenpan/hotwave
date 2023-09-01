@@ -24,11 +24,12 @@ type PacketType = uint8
 
 const (
 	// inner
-	PacketTypInnerStartAt_ PacketType = iota
-	PacketTypAck
-	PacketTypHeartbeat
+	PacketTypeInnerStartAt_ PacketType = iota
+	PacketTypeAck
+	PacketTypeHeartbeat
 	PacketTypeEcho
-	PacketTypInnerEndAt_
+	PacketTypeAuth
+	PacketTypeInnerEndAt_
 )
 
 type Packet interface {

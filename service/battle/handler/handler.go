@@ -17,6 +17,7 @@ import (
 	"hotwave/service/battle/table"
 	"hotwave/transport/tcp"
 	"hotwave/utils/calltable"
+	"hotwave/utils/marshal"
 )
 
 type Handler struct {
@@ -24,6 +25,7 @@ type Handler struct {
 
 	LogicCreator *battle.GameLogicCreator
 	ct           *calltable.CallTable[int]
+	marshal      marshal.Marshaler
 	Publisher    event.Publisher
 
 	createCounter int32
@@ -112,9 +114,8 @@ func (h *Handler) getBattleById(battleId string) *table.Table {
 }
 
 func (h *Handler) OnConn(s *tcp.Socket, ss tcp.SocketStat) {
-	if ss == tcp.Disconnected && s.UID() != 0 {
-		log.Infof("disconnect")
-	}
+	log.Info("OnConn:", int(ss))
+
 }
 
 func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
@@ -133,14 +134,14 @@ func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
 	}
 
 	req := method.NewRequest()
-	method.Marshal.Unmarshal(body[4:], req)
+	h.marshal.Unmarshal(body[4:], req)
 
 	if ctype == 4 {
 		res := method.Call(h, req)
 		ss.Reset()
 		respi := res[0]
 
-		respraw, err := method.Marshal.Marshal(respi)
+		respraw, err := h.marshal.Marshal(respi)
 		if err != nil {
 			return
 		}

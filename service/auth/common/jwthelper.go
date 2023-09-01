@@ -11,6 +11,7 @@ import (
 
 func GenerateToken(pk *rsa.PrivateKey, uid int64, uname string) (string, error) {
 	claims := make(jwt.MapClaims)
+	//todo:
 	claims["exp"] = time.Now().Add(24 * time.Hour).Unix()
 	claims["iat"] = time.Now().Unix()
 	claims["aud"] = "games"
