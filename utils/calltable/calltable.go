@@ -22,8 +22,8 @@ type Method struct {
 	Imp   reflect.Method
 	Style MethodStyle
 
-	H  interface{}
-	hv reflect.Value
+	H interface{}
+	// hv reflect.Value
 
 	RequestType  reflect.Type
 	ResponseType reflect.Type
@@ -47,7 +47,7 @@ func (m *Method) InitPool() {
 
 func (m *Method) Call(args ...interface{}) []reflect.Value {
 	values := make([]reflect.Value, len(args)+1)
-	values[0] = m.hv
+	values[0] = reflect.ValueOf(m.H)
 	for i, v := range args {
 		values[i+1] = reflect.ValueOf(v)
 	}

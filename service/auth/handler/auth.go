@@ -15,7 +15,6 @@ import (
 	msg "hotwave/service/auth/proto"
 	"hotwave/service/auth/store/cache"
 	"hotwave/service/auth/store/models"
-	"hotwave/utils/calltable"
 )
 
 var RegUname = regexp.MustCompile(`^[a-zA-Z0-9_]{4,16}$`)
@@ -25,7 +24,6 @@ type AuthOptions struct {
 	PublicKey []byte
 	DB        *gorm.DB
 	Cache     cache.AuthCache
-	CT        *calltable.CallTable[string]
 }
 
 func NewAuth(opts AuthOptions) *Auth {

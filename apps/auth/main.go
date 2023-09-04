@@ -1,16 +1,12 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
-	"reflect"
 
 	"github.com/urfave/cli/v2"
 	"google.golang.org/protobuf/encoding/protojson"
-	protobuf "google.golang.org/protobuf/proto"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -21,7 +17,9 @@ import (
 	"hotwave/service/auth/proto"
 	"hotwave/service/auth/store/cache"
 	"hotwave/service/auth/store/models"
+	"hotwave/transport/httpsvr"
 	"hotwave/utils/calltable"
+	"hotwave/utils/marshal"
 	"hotwave/utils/rsagen"
 	utilSignal "hotwave/utils/signal"
 )
@@ -135,19 +133,29 @@ func RealMain(c *cli.Context) error {
 	authHandler := handler.NewAuth(handler.AuthOptions{
 		PK:        pk,
 		PublicKey: publicRaw,
-		DB:        CreateSQLiteClient("auth.db"),
-		Cache:     cache.NewMemory(),
+		// DB:        CreateSQLiteClient("auth.db"),
+		DB:    CreateMysqlClient("root:123456@tcp(test122:13306)/auth?charset=utf8mb4&parseTime=True&loc=Local"),
+		Cache: cache.NewMemory(),
 	})
 
-	authHandler.CT = calltable.ExtractParseGRpcMethod(proto.File_proto_auth_proto.Services(), authHandler)
+	ct := calltable.ExtractParseGRpcMethod(proto.File_proto_auth_proto.Services(), authHandler)
 
-	ServerCallTable(http.DefaultServeMux, authHandler, authHandler.CT)
+	svr := &httpsvr.HttpSvr{
+		CT: ct,
+		Marshal: &marshal.JSONPb{
+			MarshalOptions: protojson.MarshalOptions{
+				UseEnumNumbers: true,
+				UseProtoNames:  true,
+			},
+		},
+		// Log     logger.Logger
+		Addr: ListenAddr,
+	}
+
+	go svr.Start()
+	defer svr.Stop()
 
 	fmt.Println("start http server at:", ListenAddr)
-
-	go func() {
-		http.ListenAndServe(ListenAddr, nil)
-	}()
 
 	signal := utilSignal.WaitShutdown()
 	log.Infof("recv signal: %v", signal.String())
@@ -158,82 +166,4 @@ func AuthMiddleWrap(f func(w http.ResponseWriter, r *http.Request)) func(w http.
 	return func(w http.ResponseWriter, r *http.Request) {
 		f(w, r)
 	}
-}
-
-func ServerCallTable(mux *http.ServeMux, handler interface{}, ct *calltable.CallTable[string]) {
-	respWithError := func(w http.ResponseWriter, data interface{}, err error) {
-		type HttpRespType struct {
-			Data    interface{} `json:"data"`
-			Code    int         `json:"code"`
-			Message string      `json:"message"`
-		}
-		respWrap := &HttpRespType{
-			Data:    data,
-			Message: "ok",
-		}
-		if err != nil {
-			respWrap.Code = -1
-			respWrap.Message = err.Error()
-		}
-		raw, _ := json.Marshal(respWrap)
-		w.Write(raw)
-	}
-
-	ct.Range(func(key string, method *calltable.Method) bool {
-		pattern := "/" + key
-
-		fmt.Println("register http method:", pattern)
-
-		cb := func(w http.ResponseWriter, r *http.Request) {
-			raw, err := io.ReadAll(r.Body)
-			if err != nil {
-				respWithError(w, nil, fmt.Errorf("read body error: %s", err.Error()))
-				return
-			}
-
-			w.Header().Set("Content-Type", "application/json; charset=utf-8")
-			req := reflect.New(method.RequestType).Interface().(protobuf.Message)
-
-			// todo : get marshaler
-
-			unmarshal := &protojson.UnmarshalOptions{}
-			if err := unmarshal.Unmarshal(raw, req); err != nil {
-				respWithError(w, nil, fmt.Errorf("unmarshal request error: %s", err.Error()))
-				return
-			}
-
-			// here call method
-			respArgs := method.Call(handler, r.Context(), req)
-
-			if len(respArgs) != 2 {
-				return
-			}
-
-			var respErr error
-			if !respArgs[1].IsNil() {
-				respErr = respArgs[1].Interface().(error)
-			}
-
-			var respData json.RawMessage
-			if !respArgs[0].IsNil() {
-				if resp, ok := respArgs[0].Interface().(protobuf.Message); ok {
-					marshal := &protojson.MarshalOptions{
-						EmitUnpopulated: true,
-						UseProtoNames:   true,
-					}
-					data, err := marshal.Marshal(resp)
-					if err == nil {
-						respData = data
-					} else {
-						respWithError(w, nil, respErr)
-					}
-				}
-			}
-			respWithError(w, respData, respErr)
-		}
-		cb = AuthMiddleWrap(cb)
-		mux.HandleFunc(pattern, cb)
-
-		return true
-	})
 }

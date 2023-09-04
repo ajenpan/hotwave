@@ -16,15 +16,16 @@ type HttpSvr struct {
 	CT      *calltable.CallTable[string]
 	Marshal marshal.Marshaler
 	// Log     logger.Logger
-	svr  *http.Server
-	addr string
+	Addr string
+
+	svr *http.Server
 }
 
 func (s *HttpSvr) Start() error {
 	mux := http.NewServeMux()
 	s.serverCallTable(mux, s.CT)
 	s.svr = &http.Server{
-		Addr:    s.addr,
+		Addr:    s.Addr,
 		Handler: mux,
 	}
 	return s.svr.ListenAndServe()

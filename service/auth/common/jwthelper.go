@@ -16,7 +16,7 @@ func GenerateToken(pk *rsa.PrivateKey, uid int64, uname string) (string, error) 
 	claims["iat"] = time.Now().Unix()
 	claims["aud"] = "games"
 	claims["nbf"] = time.Now().Unix()
-	claims["iss"] = "hotwave-auth"
+	claims["iss"] = "auth"
 	claims["sub"] = uname
 	claims["uid"] = strconv.FormatInt(uid, 10)
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)

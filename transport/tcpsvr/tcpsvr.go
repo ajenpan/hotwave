@@ -38,14 +38,14 @@ func (svr *TcpSvr) OnMessage(session *tcp.Socket, packet *tcp.THVPacket) {
 	}
 
 	req := method.NewRequest()
-	method.Marshal.Unmarshal(body[4:], req)
+	svr.Marshal.Unmarshal(body[4:], req)
 
 	if ctype == 4 {
 		res := method.Call(req)
 		packet.Reset()
 		respi := res[0]
 
-		respraw, err := method.Marshal.Marshal(respi)
+		respraw, err := svr.Marshal.Marshal(respi)
 		if err != nil {
 			return
 		}
