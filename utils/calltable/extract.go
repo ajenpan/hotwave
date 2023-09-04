@@ -10,7 +10,7 @@ import (
 )
 
 func ExtractParseGRpcMethod(ms protoreflect.ServiceDescriptors, h interface{}) *CallTable[string] {
-	refh := reflect.TypeOf(h)
+	refh := reflect.ValueOf(h)
 
 	ret := NewCallTable[string]()
 
@@ -27,32 +27,30 @@ func ExtractParseGRpcMethod(ms protoreflect.ServiceDescriptors, h interface{}) *
 			rpcMethod := methods.Get(j)
 			rpcMethodName := string(rpcMethod.Name())
 
-			method, has := refh.MethodByName(rpcMethodName)
-			if !has {
+			methodv := refh.MethodByName(rpcMethodName)
+			method := methodv.Type()
+
+			if method.NumIn() != 2 || method.NumOut() != 2 {
 				continue
 			}
-			if method.Type.NumIn() != 3 || method.Type.NumOut() != 2 {
+			if method.In(0) != ctxType {
 				continue
 			}
-			if method.Type.In(1) != ctxType {
+			if !method.In(1).Implements(pbMsgType) {
 				continue
 			}
-			if !method.Type.In(2).Implements(pbMsgType) {
+			if !method.Out(0).Implements(pbMsgType) {
 				continue
 			}
-			if !method.Type.Out(0).Implements(pbMsgType) {
+			if method.Out(1) != errType {
 				continue
 			}
-			if method.Type.Out(1) != errType {
-				continue
-			}
-			epn := strings.Join([]string{svrName, rpcMethodName}, EndpointSplit)
-			reqType := method.Type.In(2).Elem()
-			respType := method.Type.Out(0).Elem()
+			epn := strings.Join([]string{svrName, rpcMethodName}, "/")
+			reqType := method.In(1).Elem()
+			respType := method.Out(0).Elem()
 
 			m := &Method{
-				H:            h,
-				Imp:          method,
+				FuncValue:    methodv,
 				Style:        StyleGRpc,
 				RequestType:  reqType,
 				ResponseType: respType,
@@ -94,8 +92,7 @@ func ExtractAsyncMethod(ms protoreflect.MessageDescriptors, h interface{}) *Call
 		}
 
 		m := &Method{
-			H:           h,
-			Imp:         method,
+			FuncValue:   method.Func,
 			Style:       StyleAsync,
 			RequestType: reqMsgType.Elem(),
 		}
@@ -117,7 +114,7 @@ func ExtractProtoFile(fd protoreflect.FileDescriptor, handler interface{}) *Call
 	return ret
 }
 
-func GetMessageMsgID(msg protoreflect.MessageDescriptor) int {
+func GetMessageMsgID(msg protoreflect.MessageDescriptor) uint32 {
 	MSGIDDesc := msg.Enums().ByName("MSGID")
 	if MSGIDDesc == nil {
 		return 0
@@ -126,14 +123,14 @@ func GetMessageMsgID(msg protoreflect.MessageDescriptor) int {
 	if IDDesc == nil {
 		return 0
 	}
-	return int(IDDesc.Number())
+	return uint32(IDDesc.Number())
 }
 
-func ExtractAsyncMethodByMsgID(ms protoreflect.MessageDescriptors, h interface{}) *CallTable[int] {
+func ExtractAsyncMethodByMsgID(ms protoreflect.MessageDescriptors, h interface{}) *CallTable[uint32] {
 	const MethodPrefix string = "On"
 	refh := reflect.TypeOf(h)
 
-	ret := NewCallTable[int]()
+	ret := NewCallTable[uint32]()
 	pbMsgType := reflect.TypeOf((*proto.Message)(nil)).Elem()
 
 	for i := 0; i < ms.Len(); i++ {
@@ -160,10 +157,8 @@ func ExtractAsyncMethodByMsgID(ms protoreflect.MessageDescriptors, h interface{}
 		if !reqMsgType.Implements(pbMsgType) {
 			continue
 		}
-
 		m := &Method{
-			H:           h,
-			Imp:         method,
+			FuncValue:   method.Func,
 			Style:       StyleAsync,
 			RequestType: reqMsgType.Elem(),
 		}

@@ -24,7 +24,7 @@ type Handler struct {
 	battles sync.Map
 
 	LogicCreator *battle.GameLogicCreator
-	ct           *calltable.CallTable[int]
+	ct           *calltable.CallTable[uint32]
 	marshal      marshal.Marshaler
 	Publisher    event.Publisher
 
@@ -127,7 +127,7 @@ func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
 		return
 	}
 
-	msgid := int(binary.LittleEndian.Uint32(body))
+	msgid := binary.LittleEndian.Uint32(body)
 	method := h.ct.Get(msgid)
 	if method == nil {
 		return
@@ -147,7 +147,7 @@ func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
 		}
 
 		respHead := make([]byte, 4)
-		binary.LittleEndian.PutUint32(respHead, method.ResponseID)
+		binary.LittleEndian.PutUint32(respHead, msgid+1)
 		ss.Body = append(respHead, respraw...)
 		s.SendPacket(ss)
 	}

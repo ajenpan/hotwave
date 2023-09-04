@@ -36,7 +36,7 @@ type Router struct {
 	uid uint32
 
 	PublicKey *rsa.PublicKey
-	ct        *calltable.CallTable[int]
+	ct        *calltable.CallTable[uint32]
 }
 
 type UserInfo struct {
@@ -186,7 +186,7 @@ func (r *Router) SetSocketUID(uid uint32, s *tcp.Socket) {
 
 func (r *Router) OnCall(s *tcp.Socket, p *tcp.PackFrame, head tcp.RouteHead, body []byte) {
 	var err error
-	msgid := int(head.GetMsgID())
+	msgid := (head.GetMsgID())
 	askid := head.GetAskID()
 	method := r.ct.Get(msgid)
 	if method == nil {

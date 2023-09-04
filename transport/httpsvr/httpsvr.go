@@ -1,32 +1,25 @@
 package httpsvr
 
 import (
-	"fmt"
 	"io"
 	"net/http"
-	"reflect"
-
-	protobuf "google.golang.org/protobuf/proto"
+	"strings"
 
 	"hotwave/utils/calltable"
 	"hotwave/utils/marshal"
 )
 
 type HttpSvr struct {
-	CT      *calltable.CallTable[string]
 	Marshal marshal.Marshaler
-	// Log     logger.Logger
-	Addr string
-
-	svr *http.Server
+	Addr    string
+	Mux     *http.ServeMux
+	svr     *http.Server
 }
 
 func (s *HttpSvr) Start() error {
-	mux := http.NewServeMux()
-	s.serverCallTable(mux, s.CT)
 	s.svr = &http.Server{
 		Addr:    s.Addr,
-		Handler: mux,
+		Handler: s.Mux,
 	}
 	return s.svr.ListenAndServe()
 }
@@ -35,19 +28,23 @@ func (s *HttpSvr) Stop() error {
 	return s.svr.Close()
 }
 
-func (s *HttpSvr) serverCallTable(mux *http.ServeMux, ct *calltable.CallTable[string]) {
+func (s *HttpSvr) ServerCallTable(ct *calltable.CallTable[string]) {
 	ct.Range(func(key string, method *calltable.Method) bool {
-		pattern := "/" + key
-		fmt.Println("register http method:", pattern)
-		cb := handleCallback(method, s.Marshal)
-		mux.HandleFunc(pattern, cb)
+		if !strings.HasPrefix(key, "/") {
+			key = "/" + key
+		}
+		cb := s.WrapMethod(method)
+		s.Mux.HandleFunc(key, cb)
 		return true
 	})
 }
 
-func handleCallback(method *calltable.Method, marshal marshal.Marshaler) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
+func (s *HttpSvr) HandleMethod(name string, method *calltable.Method) {
+	s.Mux.HandleFunc(name, s.WrapMethod(method))
+}
 
+func (s *HttpSvr) WrapMethod(method *calltable.Method) func(w http.ResponseWriter, r *http.Request) {
+	return func(w http.ResponseWriter, r *http.Request) {
 		raw, err := io.ReadAll(r.Body)
 		if err != nil {
 			w.WriteHeader(http.StatusBadRequest)
@@ -56,9 +53,10 @@ func handleCallback(method *calltable.Method, marshal marshal.Marshaler) func(w 
 		}
 
 		w.Header().Set("Content-Type", "application/json; charset=utf-8")
-		req := reflect.New(method.RequestType).Interface().(protobuf.Message)
+		req := method.GetRequest()
+		defer method.PutRequest(req)
 
-		if err := marshal.Unmarshal(raw, req); err != nil {
+		if err := s.Marshal.Unmarshal(raw, req); err != nil {
 			w.WriteHeader(http.StatusBadRequest)
 			w.Write([]byte(err.Error()))
 			return
@@ -81,7 +79,7 @@ func handleCallback(method *calltable.Method, marshal marshal.Marshaler) func(w 
 		}
 
 		if !respArgs[0].IsNil() {
-			respData, err := marshal.Marshal(respArgs[0].Interface())
+			respData, err := s.Marshal.Marshal(respArgs[0].Interface())
 			if err != nil {
 				w.WriteHeader(http.StatusInternalServerError)
 				w.Write([]byte(respErr.Error()))

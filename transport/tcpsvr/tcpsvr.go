@@ -51,7 +51,7 @@ func (svr *TcpSvr) OnMessage(session *tcp.Socket, packet *tcp.THVPacket) {
 		}
 
 		respHead := make([]byte, 4)
-		binary.LittleEndian.PutUint32(respHead, method.ResponseID)
+		binary.LittleEndian.PutUint32(respHead, msgid)
 		packet.Body = append(respHead, respraw...)
 		session.SendPacket(packet)
 	}
