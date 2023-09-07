@@ -97,6 +97,7 @@ func (d *Table) Init(logic bf.Logic, players []*Player, logicConf interface{}) e
 	}
 	return nil
 }
+
 func (d *Table) pushAction(f func()) {
 	d.action <- f
 }
@@ -168,6 +169,7 @@ func (d *Table) ReportBattleStatus(s bf.GameStatus) {
 		StatusNow:    int32(s),
 		BattleId:     d.ID,
 	}
+
 	d.PublishEvent(event)
 
 	switch s {
@@ -226,12 +228,10 @@ func (d *Table) IsPlaying() bool {
 
 func (d *Table) reportGameStart() {
 	d.StartAt = time.Now()
-	d.PublishEvent(&pb.BattleStartEvent{})
 }
 
 func (d *Table) reportGameOver() {
 	d.OverAt = time.Now()
-	d.PublishEvent(&pb.BattleOverEvent{})
 }
 
 func (d *Table) GetPlayer(uid int64) *Player {
@@ -262,9 +262,6 @@ func (d *Table) PublishEvent(eventmsg proto.Message) {
 }
 
 func (d *Table) OnPlayerMessage(uid int64, msgid int, iraw []byte) {
-	// here is not safe
-	// msg := proto.Clone(fmsg).(*pb.BattleMessageWrap)
-
 	d.action <- func() {
 		p := d.GetPlayer(uid)
 		if p != nil && d.battle != nil {

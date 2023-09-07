@@ -59,13 +59,21 @@ func (m *MapMeta) MetaDelete(key string) {
 }
 
 type UserInfo struct {
-	Uid   uint32
+	Uid   uint64
 	Uname string
 	Role  string
 }
 
-func (u *UserInfo) UID() uint32 {
+func (u *UserInfo) UID() uint64 {
 	return u.Uid
+}
+
+func (u *UserInfo) UserName() string {
+	return u.Uname
+}
+
+func (u *UserInfo) UserRole() string {
+	return u.Role
 }
 
 type Socket struct {

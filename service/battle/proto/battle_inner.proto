@@ -4,6 +4,7 @@ package battle;
 
 option go_package = "/proto";
 
+ 
 message PlayerInfo {
   int64 uid = 1;
   int32 seat_id = 2;

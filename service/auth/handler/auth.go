@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/rsa"
 	"fmt"
+	"net/http"
 	"regexp"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	msg "hotwave/service/auth/proto"
 	"hotwave/service/auth/store/cache"
 	"hotwave/service/auth/store/models"
+	"hotwave/utils/calltable"
 )
 
 var RegUname = regexp.MustCompile(`^[a-zA-Z0-9_]{4,16}$`)
@@ -30,11 +32,14 @@ func NewAuth(opts AuthOptions) *Auth {
 	ret := &Auth{
 		AuthOptions: opts,
 	}
+	ct := calltable.ExtractParseGRpcMethod(msg.File_proto_auth_proto.Services(), ret)
+	ret.ct = ct
 	return ret
 }
 
 type Auth struct {
 	AuthOptions
+	ct *calltable.CallTable[string]
 }
 
 func (*Auth) Captcha(ctx context.Context, in *msg.CaptchaRequest) (*msg.CaptchaResponse, error) {
@@ -44,7 +49,7 @@ func (*Auth) Captcha(ctx context.Context, in *msg.CaptchaRequest) (*msg.CaptchaR
 func (h *Auth) Login(ctx context.Context, in *msg.LoginRequest) (*msg.LoginResponse, error) {
 	out := &msg.LoginResponse{}
 
-	if len(in.Uname) < 4 {
+	if !RegUname.MatchString(in.Uname) {
 		out.Flag = msg.LoginResponse_UNAME_ERROR
 		out.Msg = "please input right uname"
 		return out, nil
@@ -134,8 +139,8 @@ func (h *Auth) UserInfo(ctx context.Context, in *msg.UserInfoRequest) (*msg.User
 		if res.RowsAffected == 0 {
 			return nil, fmt.Errorf("user no found")
 		}
-		//TODO:
-		// h.Cache.StoreUser(ctx, &cache.AuthCacheInfo{User: user}, time.Hour)
+
+		h.Cache.StoreUser(ctx, &cache.AuthCacheInfo{User: user}, time.Hour)
 	}
 
 	out := &msg.UserInfoResponse{
@@ -150,8 +155,8 @@ func (h *Auth) UserInfo(ctx context.Context, in *msg.UserInfoRequest) (*msg.User
 }
 
 func (h *Auth) Register(ctx context.Context, in *msg.RegisterRequest) (*msg.RegisterResponse, error) {
-	if len(in.Uname) < 4 {
-		return nil, fmt.Errorf("please input right account")
+	if !RegUname.MatchString(in.Uname) {
+		return nil, nil
 	}
 	if len(in.Passwd) < 6 {
 		return nil, fmt.Errorf("passwd is required")
@@ -193,6 +198,9 @@ func (h *Auth) AnonymousLogin(ctx context.Context, in *msg.AnonymousLoginRequest
 }
 
 func (h *Auth) ModifyPasswd(ctx context.Context, in *msg.ModifyPasswdRequest) (*msg.ModifyPasswdResponse, error) {
-	//TODO:
 	return nil, nil
+}
+
+func (h *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+
 }

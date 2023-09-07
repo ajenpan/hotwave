@@ -35,7 +35,7 @@ func New() *Handler {
 	h := &Handler{
 		LogicCreator: &battle.GameLogicCreator{},
 	}
-	h.ct = calltable.ExtractAsyncMethodByMsgID(proto.File_proto_battle_client_proto.Messages(), h)
+	h.ct = calltable.ExtractAsyncMethodByMsgID(proto.File_proto_battle_server_proto.Messages(), h)
 	return h
 }
 
@@ -52,6 +52,7 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest
 	atomic.AddInt32(&h.createCounter, 1)
 
 	battleid := uuid.NewString() + fmt.Sprintf("-%d", h.createCounter)
+
 	d := table.NewTable(table.TableOption{
 		ID:             battleid,
 		Conf:           in.BattleConf,
@@ -98,12 +99,17 @@ func (h *Handler) OnEvent(topc string, msg protobuf.Message) {
 
 }
 
-func (h *Handler) OnBattleMessageWrap(uid int64, msg *proto.GameMessageWrap) {
+func (h *Handler) JoinBattle(ctx context.Context, in *proto.JoinBattleRequest) (*proto.JoinBattleResponse, error) {
+	out := &proto.JoinBattleResponse{}
+
+	return out, nil
+}
+func (h *Handler) OnBattleMessageWrap(s *tcp.Socket, msg *proto.GameMessageWrap) {
 	b := h.getBattleById(msg.BattleId)
 	if b == nil {
 		return
 	}
-	b.OnPlayerMessage(uid, int(msg.Msgid), msg.Data)
+	b.OnPlayerMessage(int64(s.Uid), int(msg.Msgid), msg.Data)
 }
 
 func (h *Handler) getBattleById(battleId string) *table.Table {
@@ -115,41 +121,60 @@ func (h *Handler) getBattleById(battleId string) *table.Table {
 
 func (h *Handler) OnConn(s *tcp.Socket, ss tcp.SocketStat) {
 	log.Info("OnConn:", int(ss))
-
+	if ss == tcp.Disconnected {
+		s.MetaLoad("uid")
+	}
 }
 
 func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
-	body := ss.GetBody()
 	ctype := ss.GetType()
-
-	if len(body) < 4 {
-		log.Errorf("invalid message, body len: %d", len(body))
+	if ctype <= tcp.PacketTypeInnerEndAt_ {
 		return
 	}
-
-	msgid := binary.LittleEndian.Uint32(body)
-	method := h.ct.Get(msgid)
-	if method == nil {
-		return
-	}
-
-	req := method.NewRequest()
-	h.marshal.Unmarshal(body[4:], req)
 
 	if ctype == 4 {
-		res := method.Call(h, req)
-		ss.Reset()
-		respi := res[0]
-
-		respraw, err := h.marshal.Marshal(respi)
-		if err != nil {
+		body := ss.GetBody()
+		if len(body) < 4 {
+			log.Errorf("invalid message, body len: %d", len(body))
 			return
 		}
 
-		respHead := make([]byte, 4)
-		binary.LittleEndian.PutUint32(respHead, msgid+1)
-		ss.Body = append(respHead, respraw...)
-		s.SendPacket(ss)
-	}
+		msgid := binary.LittleEndian.Uint32(body)
+		method := h.ct.Get(msgid)
+		if method == nil {
+			return
+		}
 
+		req := method.GetRequest()
+		defer method.PutRequest(req)
+
+		err := h.marshal.Unmarshal(body[4:], req)
+		if err != nil {
+			log.Errorf("marshal msgid:%d,error:%w", msgid, err)
+			return
+		}
+		res := method.Call(req)
+		if len(res) == 0 {
+			return
+		}
+		if res[0].IsNil() {
+			return
+		}
+		err, ok := res[0].Interface().(error)
+		if ok && err != nil {
+			log.Errorf("call msgid:%d,error:%w", msgid, err)
+			return
+		}
+
+		// ss.Reset()
+		// respi := res[0]
+		// respraw, err := h.marshal.Marshal(respi)
+		// if err != nil {
+		// 	return
+		// }
+		// respHead := make([]byte, 4)
+		// binary.LittleEndian.PutUint32(respHead, msgid+1)
+		// ss.Body = append(respHead, respraw...)
+		// s.SendPacket(ss)
+	}
 }

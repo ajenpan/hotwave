@@ -3,7 +3,7 @@ package auth
 import (
 	"crypto/rsa"
 
-	"hotwave/service/common"
+	"hotwave/service/auth/common"
 )
 
 type LocalAuth struct {

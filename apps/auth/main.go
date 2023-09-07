@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"net/http"
 	"os"
+	"reflect"
+	"strings"
 
 	"github.com/urfave/cli/v2"
 	"google.golang.org/protobuf/encoding/protojson"
@@ -13,8 +15,8 @@ import (
 	"gorm.io/gorm/schema"
 
 	log "hotwave/logger"
+	"hotwave/service/auth/common"
 	"hotwave/service/auth/handler"
-	"hotwave/service/auth/proto"
 	"hotwave/service/auth/store/cache"
 	"hotwave/service/auth/store/models"
 	"hotwave/transport/httpsvr"
@@ -114,6 +116,7 @@ func CreateSQLiteClient(dsn string) *gorm.DB {
 	err = dbc.AutoMigrate(
 		&models.Users{},
 	)
+
 	if err != nil {
 		panic(err)
 	}
@@ -129,17 +132,55 @@ func RealMain(c *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	publicKey, err := rsagen.ParseRsaPublicKeyFromPem(publicRaw)
+	if err != nil {
+		return err
+	}
 
 	h := handler.NewAuth(handler.AuthOptions{
 		PK:        pk,
 		PublicKey: publicRaw,
-		DB:        CreateMysqlClient("root:123456@tcp(test122:13306)/auth?charset=utf8mb4&parseTime=True&loc=Local"),
-		Cache:     cache.NewMemory(),
+		// DB:        CreateSQLiteClient("auth.db"),
+		DB:    CreateMysqlClient("root:123456@tcp(test122:13306)/auth?charset=utf8mb4&parseTime=True&loc=Local"),
+		Cache: cache.NewMemory(),
 	})
 
-	ct := calltable.ExtractParseGRpcMethod(proto.File_proto_auth_proto.Services(), h)
+	AuthWrapper := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			authorstr := r.Header.Get("Authorization")
+			authorstr = strings.TrimPrefix(authorstr, "Bearer ")
+			if authorstr == "" {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			_, _, err := common.VerifyToken(publicKey, authorstr)
+			if err != nil {
+				w.WriteHeader(http.StatusUnauthorized)
+				return
+			}
+			h.ServeHTTP(w, r)
+		}
+	}
+
+	mux := http.NewServeMux()
+	mux.Handle("/auth", h)
+
+	NewMethod := func(f interface{}) *calltable.Method {
+		refv := reflect.ValueOf(f)
+		if refv.Kind() != reflect.Func {
+			return nil
+		}
+		ret := &calltable.Method{
+			Func:         refv,
+			RequestType:  refv.Type().In(1).Elem(),
+			ResponseType: refv.Type().Out(0).Elem(),
+		}
+		ret.InitPool()
+		return ret
+	}
+
 	svr := &httpsvr.HttpSvr{
-		Mux: http.NewServeMux(),
+		Mux: mux,
 		Marshal: &marshal.JSONPb{
 			MarshalOptions: protojson.MarshalOptions{
 				UseEnumNumbers: true,
@@ -148,7 +189,10 @@ func RealMain(c *cli.Context) error {
 		},
 		Addr: ListenAddr,
 	}
-	svr.ServerCallTable(ct)
+
+	svr.HandleMethod("/auth/Login", NewMethod(h.Login))
+	svr.Mux.Handle("/auth/UserInfo", AuthWrapper(svr.WrapMethod(NewMethod(h.UserInfo))))
+	svr.Mux.Handle("/auth/RefreshToken", AuthWrapper(svr.WrapMethod(NewMethod(h.RefreshToken))))
 
 	go svr.Start()
 	defer svr.Stop()
@@ -158,10 +202,4 @@ func RealMain(c *cli.Context) error {
 	signal := utilSignal.WaitShutdown()
 	log.Infof("recv signal: %v", signal.String())
 	return nil
-}
-
-func AuthMiddleWrap(f func(w http.ResponseWriter, r *http.Request)) func(w http.ResponseWriter, r *http.Request) {
-	return func(w http.ResponseWriter, r *http.Request) {
-		f(w, r)
-	}
 }

@@ -15,7 +15,7 @@ const (
 )
 
 type Method struct {
-	FuncValue reflect.Value
+	Func reflect.Value
 
 	Style MethodStyle
 
@@ -43,7 +43,7 @@ func (m *Method) Call(args ...interface{}) []reflect.Value {
 	for i, v := range args {
 		values[i] = reflect.ValueOf(v)
 	}
-	return m.FuncValue.Call(values)
+	return m.Func.Call(values)
 }
 
 func (m *Method) NewRequest() interface{} {

@@ -2,16 +2,23 @@ package main
 
 import (
 	"bytes"
+	"crypto/rsa"
 	"fmt"
+	"net/http"
 	"os"
 	"runtime"
+	"strconv"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/urfave/cli/v2"
 
 	_ "hotwave/games/niuniu"
 	"hotwave/logger"
 	battleHandler "hotwave/service/battle/handler"
+	"hotwave/transport/httpsvr"
 	"hotwave/transport/tcp"
+	"hotwave/utils/marshal"
+	"hotwave/utils/rsagen"
 	utilSignal "hotwave/utils/signal"
 )
 
@@ -60,7 +67,20 @@ func Run() error {
 
 var listenAt string = ":12345"
 
+func LoadAuthPublicKey() (*rsa.PublicKey, error) {
+	publicRaw, err := os.ReadFile("public.pem")
+	if err != nil {
+		return nil, err
+	}
+	pk, err := rsagen.ParseRsaPublicKeyFromPem(publicRaw)
+	return pk, err
+}
+
 func RealMain(c *cli.Context) error {
+	pk, err := LoadAuthPublicKey()
+	if err != nil {
+		panic(err)
+	}
 
 	h := battleHandler.New()
 
@@ -68,12 +88,29 @@ func RealMain(c *cli.Context) error {
 		Address:   listenAt,
 		OnMessage: h.OnMessage,
 		OnConn:    h.OnConn,
-		AuthTokenChecker: func(s string) (*tcp.UserInfo, error) {
-			return &tcp.UserInfo{
-				Uid:   1,
-				Uname: "1",
-				Role:  "test",
-			}, nil
+		AuthTokenChecker: func(tokenRaw string) (*tcp.UserInfo, error) {
+			claims := make(jwt.MapClaims)
+			token, err := jwt.ParseWithClaims(tokenRaw, claims, func(t *jwt.Token) (interface{}, error) {
+				return pk, nil
+			})
+			if err != nil {
+				return nil, err
+			}
+			if !token.Valid {
+				return nil, fmt.Errorf("invalid token")
+			}
+			ret := &tcp.UserInfo{}
+			if uname, has := claims["aud"]; has {
+				ret.Uname = uname.(string)
+			}
+			if uidstr, has := claims["uid"]; has {
+				uid, _ := strconv.ParseUint(uidstr.(string), 10, 64)
+				ret.Uid = uid
+			}
+			if role, has := claims["rid"]; has {
+				ret.Role = role.(string)
+			}
+			return ret, nil
 		},
 	})
 
@@ -83,6 +120,15 @@ func RealMain(c *cli.Context) error {
 
 	go listener.Start()
 	defer listener.Stop()
+
+	hsvr := httpsvr.HttpSvr{
+		Marshal: &marshal.JSONPb{},
+		Addr:    ":12346",
+		Mux:     http.NewServeMux(),
+	}
+
+	go hsvr.Start()
+	defer hsvr.Stop()
 
 	s := utilSignal.WaitShutdown()
 	logger.Infof("recv signal: %v", s.String())
