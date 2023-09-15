@@ -10,7 +10,7 @@ message JoinBattleRequest {
     ID = 2000;
   }
   string battle_id = 1;
-  int32 seat_id = 2;
+  uint32 seat_id = 2;
   int32 ready_state = 3;
 }
 
@@ -20,7 +20,7 @@ message JoinBattleResponse {
     ID = 2001;
   }
   string battle_id = 1;
-  int32 seat_id = 2;
+  uint32 seat_id = 2;
   int32 ready_state = 3;
 }
 
@@ -41,12 +41,12 @@ message PlayerReadyResonse {
   int32 ready_state = 1;
 }
 
-message GameMessageWrap {
+message LoigcMessageWrap {
   enum MSGID {
     INVALID_MSGID = 0;
     ID = 2004;
   }
   string battle_id = 1;
-  int32 msgid = 2;
+  uint32 msgid = 2;
   bytes data = 3;
 }

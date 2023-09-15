@@ -19,31 +19,54 @@ import (
 // uid	用户ID
 // rid	角色ID
 
-func GenerateToken(pk *rsa.PrivateKey, uid int64, uname string) (string, error) {
+type UserClaims struct {
+	UID   uint64
+	UName string
+	Role  string
+}
+
+func GenerateToken(pk *rsa.PrivateKey, us *UserClaims) (string, error) {
 	claims := make(jwt.MapClaims)
 	claims["iss"] = "hotwave"
-	claims["sub"] = "auth"
 	claims["exp"] = time.Now().Add(24 * time.Hour).Unix()
-	claims["iat"] = time.Now().Unix()
-	claims["aud"] = uname
-	claims["uid"] = strconv.FormatInt(uid, 10)
+	claims["aud"] = us.UName
+	claims["uid"] = strconv.FormatInt(int64(us.UID), 10)
+	claims["rid"] = us.Role
+	// claims["sub"] = "auth"
+	// claims["iat"] = time.Now().Unix()
 	token := jwt.NewWithClaims(jwt.SigningMethodRS256, claims)
 	return token.SignedString(pk)
 }
 
-func VerifyToken(pk *rsa.PublicKey, tokenRaw string) (int64, string, error) {
+func VerifyToken(pk *rsa.PublicKey, tokenRaw string) (*UserClaims, error) {
 	claims := make(jwt.MapClaims)
 	token, err := jwt.ParseWithClaims(tokenRaw, claims, func(t *jwt.Token) (interface{}, error) {
 		return pk, nil
 	})
 	if err != nil {
-		return 0, "", err
+		return nil, err
 	}
 	if !token.Valid {
-		return 0, "", fmt.Errorf("invalid token")
+		return nil, fmt.Errorf("invalid token")
 	}
-	uname := claims["aud"]
-	uidstr := claims["uid"]
-	uid, _ := strconv.ParseInt(uidstr.(string), 10, 64)
-	return uid, uname.(string), nil
+	ret := &UserClaims{}
+	if v, has := claims["rid"]; has {
+		vstr, ok := v.(string)
+		if ok {
+			ret.Role = vstr
+		}
+	}
+	if v, has := claims["uname"]; has {
+		vstr, ok := v.(string)
+		if ok {
+			ret.UName = vstr
+		}
+	}
+	if v, has := claims["uid"]; has {
+		vstr, ok := v.(string)
+		if ok {
+			ret.UID, _ = strconv.ParseUint(vstr, 10, 64)
+		}
+	}
+	return ret, nil
 }

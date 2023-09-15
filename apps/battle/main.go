@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"crypto/rsa"
 	"fmt"
-	"net/http"
 	"os"
 	"runtime"
 	"strconv"
@@ -15,9 +14,7 @@ import (
 	_ "hotwave/games/niuniu"
 	"hotwave/logger"
 	battleHandler "hotwave/service/battle/handler"
-	"hotwave/transport/httpsvr"
 	"hotwave/transport/tcp"
-	"hotwave/utils/marshal"
 	"hotwave/utils/rsagen"
 	utilSignal "hotwave/utils/signal"
 )
@@ -120,15 +117,6 @@ func RealMain(c *cli.Context) error {
 
 	go listener.Start()
 	defer listener.Stop()
-
-	hsvr := httpsvr.HttpSvr{
-		Marshal: &marshal.JSONPb{},
-		Addr:    ":12346",
-		Mux:     http.NewServeMux(),
-	}
-
-	go hsvr.Start()
-	defer hsvr.Stop()
 
 	s := utilSignal.WaitShutdown()
 	logger.Infof("recv signal: %v", s.String())

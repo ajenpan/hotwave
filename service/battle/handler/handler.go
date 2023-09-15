@@ -40,10 +40,6 @@ func New() *Handler {
 }
 
 func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest) (*proto.StartBattleResponse, error) {
-	if len(in.PlayerInfos) == 0 {
-		return nil, fmt.Errorf("player info is empty")
-	}
-
 	logic, err := h.LogicCreator.CreateLogic(in.GameName)
 	if err != nil {
 		return nil, err
@@ -57,6 +53,9 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest
 		ID:             battleid,
 		Conf:           in.BattleConf,
 		EventPublisher: h.Publisher,
+		FinishReporter: func() {
+			h.onBattleFinished(battleid)
+		},
 	})
 
 	players, err := table.NewPlayers(in.PlayerInfos)
@@ -69,11 +68,6 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest
 		return nil, err
 	}
 
-	err = d.Start()
-	if err != nil {
-		return nil, err
-	}
-
 	h.battles.Store(battleid, d)
 
 	out := &proto.StartBattleResponse{
@@ -82,34 +76,69 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest
 	return out, nil
 }
 
-func (h *Handler) StopBattle(ctx context.Context, in *proto.StopBattleRequest) (*proto.StopBattleResponse, error) {
-	out := &proto.StopBattleResponse{}
+// func (h *Handler) StopBattle(ctx context.Context, in *proto.StopBattleRequest) (*proto.StopBattleResponse, error) {
+// 	out := &proto.StopBattleResponse{}
+// 	d := h.getBattleById(in.BattleId)
+// 	if d == nil {
+// 		return out, fmt.Errorf("battle not found")
+// 	}
+// 	d.Close()
+// 	h.battles.Delete(in.BattleId)
+// 	return out, nil
+// }
 
-	d := h.getBattleById(in.BattleId)
+type userInfoKey struct{}
+
+var UserInfoKey = &userInfoKey{}
+
+func GetUserInfo(ctx context.Context) *tcp.UserInfo {
+	return ctx.Value(UserInfoKey).(*tcp.UserInfo)
+}
+
+func WithUserInfo(ctx context.Context, uinfo *tcp.UserInfo) context.Context {
+	return context.WithValue(ctx, UserInfoKey, uinfo)
+}
+
+func (h *Handler) onBattleFinished(battleid string) {
+	d := h.getBattleById(battleid)
 	if d == nil {
-		return out, fmt.Errorf("battle not found")
+		return
 	}
 	d.Close()
-
-	h.battles.Delete(in.BattleId)
-	return out, nil
+	h.battles.Delete(battleid)
 }
 
 func (h *Handler) OnEvent(topc string, msg protobuf.Message) {
 
 }
 
-func (h *Handler) JoinBattle(ctx context.Context, in *proto.JoinBattleRequest) (*proto.JoinBattleResponse, error) {
-	out := &proto.JoinBattleResponse{}
+func (h *Handler) bingBattle() error {
 
+	return nil
+}
+
+func (h *Handler) JoinBattle(ctx context.Context, in *proto.JoinBattleRequest) (*proto.JoinBattleResponse, error) {
+	out := &proto.JoinBattleResponse{
+		BattleId:   in.BattleId,
+		SeatId:     in.SeatId,
+		ReadyState: in.ReadyState,
+	}
+
+	d := h.getBattleById(in.BattleId)
+	if d == nil {
+		return nil, fmt.Errorf("battle not found")
+	}
+	uinfo := GetUserInfo(ctx)
+	d.OnPlayerReady(uinfo.Uid, in.ReadyState)
 	return out, nil
 }
-func (h *Handler) OnBattleMessageWrap(s *tcp.Socket, msg *proto.GameMessageWrap) {
+
+func (h *Handler) OnBattleMessageWrap(s *tcp.Socket, msg *proto.LoigcMessageWrap) {
 	b := h.getBattleById(msg.BattleId)
 	if b == nil {
 		return
 	}
-	b.OnPlayerMessage(int64(s.Uid), int(msg.Msgid), msg.Data)
+	b.OnPlayerMessage(s.Uid, (msg.Msgid), msg.Data)
 }
 
 func (h *Handler) getBattleById(battleId string) *table.Table {
@@ -153,6 +182,7 @@ func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
 			log.Errorf("marshal msgid:%d,error:%w", msgid, err)
 			return
 		}
+
 		res := method.Call(req)
 		if len(res) == 0 {
 			return

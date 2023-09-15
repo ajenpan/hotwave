@@ -1,11 +1,13 @@
 package auth
 
-type UserInfo struct {
-	Uid   int64
-	Uname string
-	Role  string
-}
+import "hotwave/service/auth/common"
 
+// type UserInfo struct {
+// 	Uid   uint64
+// 	Uname string
+// 	Role  string
+// }
+type UserInfo = common.UserClaims
 type Auth interface {
 	TokenAuth(token string) (*UserInfo, error)
 	// AccountAuth(account string, password string) *UserInfo

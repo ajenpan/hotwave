@@ -9,6 +9,7 @@ import (
 	nncard "github.com/ajenpan/poker_algorithm/niuniu"
 	"github.com/sirupsen/logrus"
 	protobuf "google.golang.org/protobuf/proto"
+	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
 
 	"hotwave/service/battle"
 	"hotwave/utils/calltable"
@@ -25,6 +26,18 @@ func CreateNiuniu() *Niuniu {
 		conf:    &Config{},
 	}
 	return ret
+}
+
+func GetMessageMsgID(msg protoreflect.MessageDescriptor) uint32 {
+	MSGIDDesc := msg.Enums().ByName("MSGID")
+	if MSGIDDesc == nil {
+		return 0
+	}
+	IDDesc := MSGIDDesc.Values().ByName("ID")
+	if IDDesc == nil {
+		return 0
+	}
+	return uint32(IDDesc.Number())
 }
 
 func init() {
@@ -102,7 +115,7 @@ func (nn *Niuniu) OnStart() error {
 		return fmt.Errorf("player is not enrough")
 	}
 
-	nn.table.ReportBattleStatus(battle.BattleStatus_Start)
+	nn.table.ReportBattleStatus(battle.BattleStatus_Running)
 	nn.ChangeLogicStep(GameStep_BEGIN)
 	return nil
 }
@@ -111,7 +124,7 @@ func (nn *Niuniu) OnCommand(topic string, data []byte) {
 
 }
 
-func (nn *Niuniu) OnPlayerMessage(p battle.Player, msgid int, raw []byte) {
+func (nn *Niuniu) OnPlayerMessage(p battle.Player, msgid uint32, raw []byte) {
 	nn.log.Infof("recv msgid:%d", msgid)
 }
 

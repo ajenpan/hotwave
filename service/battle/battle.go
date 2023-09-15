@@ -12,7 +12,7 @@ type RoleType int32
 
 const (
 	BattleStatus_Idle GameStatus = iota
-	BattleStatus_Start
+	BattleStatus_Running
 	BattleStatus_Over
 )
 
@@ -28,8 +28,8 @@ type Player interface {
 }
 
 type Table interface {
-	SendMessageToPlayer(Player, proto.Message)
-	BroadcastMessage(proto.Message)
+	SendMessageToPlayer(p Player, msgid uint32, data proto.Message)
+	BroadcastMessage(msgid uint32, data proto.Message)
 
 	ReportBattleStatus(GameStatus)
 	ReportBattleEvent(topic string, event proto.Message)
@@ -39,9 +39,8 @@ type Table interface {
 
 type Logic interface {
 	OnInit(c Table, conf interface{}) error
-	OnPlayerJoin([]Player) error
-	OnStart() error
+	OnStart([]Player) error
 	OnTick(time.Duration)
 	OnReset()
-	OnPlayerMessage(p Player, msgid int, data []byte)
+	OnPlayerMessage(p Player, msgid uint32, data []byte)
 }

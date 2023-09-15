@@ -2,6 +2,7 @@ package table
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/google/uuid"
@@ -18,6 +19,7 @@ type TableOption struct {
 	ID             string
 	EventPublisher event.Publisher
 	Conf           *pb.BattleConfigure
+	FinishReporter func()
 }
 
 func NewTable(opt TableOption) *Table {
@@ -26,14 +28,27 @@ func NewTable(opt TableOption) *Table {
 	}
 
 	ret := &Table{
-		TableOption: &opt,
-		CreateAt:    time.Now(),
+		TableOption:      &opt,
+		CreateAt:         time.Now(),
+		quit:             make(chan bool, 1),
+		currBattleStat:   bf.BattleStatus_Idle,
+		beforeBattleStat: bf.BattleStatus_Idle,
 	}
 
-	ret.action = make(chan func(), 100)
+	ret.actQue = make(chan func(), 100)
 
 	return ret
 }
+
+type TableStatus = int32
+
+const (
+	TableStatus_Node     TableStatus = iota
+	TableStatus_Inited   TableStatus = iota
+	TableStatus_Running  TableStatus = iota
+	TableStatus_Finished TableStatus = iota
+	TableStatus_Closed   TableStatus = iota
+)
 
 type Table struct {
 	*TableOption
@@ -42,19 +57,17 @@ type Table struct {
 	StartAt  time.Time
 	OverAt   time.Time
 
-	battle bf.Logic
+	rwlock sync.RWMutex
 
-	// watchers    sync.Map
-	// evenReport
+	battle           bf.Logic
+	currBattleStat   bf.GameStatus
+	beforeBattleStat bf.GameStatus
+	actQue           chan func()
 
-	rwlock  sync.RWMutex
-	players sync.Map
+	quit   chan bool
+	status TableStatus
 
-	action chan func()
-
-	ticker *time.Ticker
-
-	battleStatus bf.GameStatus
+	ps PlayerStore
 }
 
 func (d *Table) Init(logic bf.Logic, players []*Player, logicConf interface{}) error {
@@ -65,52 +78,15 @@ func (d *Table) Init(logic bf.Logic, players []*Player, logicConf interface{}) e
 		d.battle.OnReset()
 	}
 
-	battlePlayers := make([]bf.Player, len(players))
-	for i, p := range players {
-		// store player
-		d.players.Store(p.Uid, p)
-
-		battlePlayers[i] = p
+	for _, p := range players {
+		d.ps.Store(p)
 	}
 
 	if err := logic.OnInit(d, logicConf); err != nil {
 		return err
 	}
 
-	if err := logic.OnPlayerJoin(battlePlayers); err != nil {
-		return err
-	}
-
 	d.battle = logic
-
-	switch conf := d.Conf.StartCondition.(type) {
-	case *pb.BattleConfigure_Delayed:
-		if conf.Delayed > 0 {
-			log.Infof("start table after %d seconds", conf.Delayed)
-			time.AfterFunc(time.Duration(conf.Delayed)*time.Second, func() {
-				err := d.Start()
-				if err != nil {
-					log.Error(err)
-				}
-			})
-		}
-	}
-	return nil
-}
-
-func (d *Table) pushAction(f func()) {
-	d.action <- f
-}
-
-func (d *Table) AfterFunc(td time.Duration, f func()) {
-	time.AfterFunc(td, func() {
-		d.pushAction(f)
-	})
-}
-
-func (d *Table) Start() error {
-	d.rwlock.Lock()
-	defer d.rwlock.Unlock()
 
 	go func() {
 		safecall := func(f func()) {
@@ -122,50 +98,69 @@ func (d *Table) Start() error {
 			f()
 		}
 
-		for job := range d.action {
-			safecall(job)
+		d.updateStatus(TableStatus_Inited)
+
+		tk := time.NewTicker(1 * time.Second)
+		defer tk.Stop()
+		latest := time.Now()
+
+		select {
+		case f := <-d.actQue:
+			safecall(f)
+		case now := <-tk.C:
+			sub := now.Sub(latest)
+			latest = now
+			d.OnTick(sub)
+		case <-d.quit:
+			break
 		}
 	}()
 
-	if d.ticker != nil {
-		d.ticker.Stop()
+	return nil
+}
+
+func (d *Table) PushAction(f func()) {
+	d.actQue <- f
+}
+
+func (d *Table) AfterFunc(td time.Duration, f func()) {
+	//TODO: upgrade this function perfermance
+	time.AfterFunc(td, func() {
+		d.PushAction(f)
+	})
+}
+
+func (d *Table) OnTick(sub time.Duration) {
+	if d.battle != nil {
+		d.battle.OnTick(sub)
 	}
-
-	d.ticker = time.NewTicker(1 * time.Second)
-	go func(ticker *time.Ticker) {
-		latest := time.Now()
-		for now := range ticker.C {
-			sub := now.Sub(latest)
-			latest = now
-
-			d.pushAction(func() {
-				if d.battle != nil {
-					d.battle.OnTick(sub)
-				}
-			})
-		}
-	}(d.ticker)
-
-	return d.battle.OnStart()
 }
 
 func (d *Table) Close() {
-	if d.ticker != nil {
-		d.ticker.Stop()
+	select {
+	case <-d.quit:
+		return
+	default:
 	}
-	close(d.action)
+
+	d.battle.OnReset()
+
+	atomic.StoreInt32(&d.status, TableStatus_Closed)
+
+	close(d.quit)
+	close(d.actQue)
 }
 
 func (d *Table) ReportBattleStatus(s bf.GameStatus) {
-	if d.battleStatus == s {
+	if d.currBattleStat == s {
 		return
 	}
 
-	statusBefore := d.battleStatus
-	d.battleStatus = s
+	d.beforeBattleStat = d.currBattleStat
+	d.currBattleStat = s
 
 	event := &pb.BattleStatusChangeEvent{
-		StatusBefore: int32(statusBefore),
+		StatusBefore: int32(d.beforeBattleStat),
 		StatusNow:    int32(s),
 		BattleId:     d.ID,
 	}
@@ -174,10 +169,16 @@ func (d *Table) ReportBattleStatus(s bf.GameStatus) {
 
 	switch s {
 	case bf.BattleStatus_Idle:
-	case bf.BattleStatus_Start:
+	case bf.BattleStatus_Running:
 		d.reportGameStart()
 	case bf.BattleStatus_Over:
 		d.reportGameOver()
+
+		d.updateStatus(TableStatus_Finished)
+
+		d.AfterFunc(5*time.Second, func() {
+			d.FinishReporter()
+		})
 	}
 }
 
@@ -185,15 +186,16 @@ func (d *Table) ReportBattleEvent(topic string, event proto.Message) {
 	d.PublishEvent(event)
 }
 
-func (d *Table) SendMessageToPlayer(p bf.Player, msg proto.Message) {
+func (d *Table) SendMessageToPlayer(p bf.Player, msgid uint32, msg proto.Message) {
+	rp := p.(*Player)
 
-	rp, ok := p.(*Player)
-	if !ok {
-		log.Error("player is not Player")
+	raw, err := proto.Marshal(msg)
+	if err != nil {
+		log.Error(err)
 		return
 	}
 
-	err := rp.SendMessage(msg)
+	err = rp.Send(msgid, raw)
 	if err != nil {
 		log.Errorf("send message to player: %v, %s: %v", rp.Uid, string(proto.MessageName(msg)), msg)
 	} else {
@@ -201,7 +203,7 @@ func (d *Table) SendMessageToPlayer(p bf.Player, msg proto.Message) {
 	}
 }
 
-func (d *Table) BroadcastMessage(msg proto.Message) {
+func (d *Table) BroadcastMessage(msgid uint32, msg proto.Message) {
 	msgname := string(proto.MessageName(msg))
 	log.Debugf("BroadcastMessage: %s: %v", msgname, msg)
 
@@ -211,19 +213,17 @@ func (d *Table) BroadcastMessage(msg proto.Message) {
 		return
 	}
 
-	d.players.Range(func(key, value interface{}) bool {
-		if p, ok := value.(*Player); ok && p != nil {
-			err := p.Send(msgname, raw)
-			if err != nil {
-				log.Error(err)
-			}
+	d.ps.Range(func(p *Player) bool {
+		err := p.Send(msgid, raw)
+		if err != nil {
+			log.Error(err)
 		}
 		return true
 	})
 }
 
 func (d *Table) IsPlaying() bool {
-	return d.battleStatus == bf.BattleStatus_Start
+	return d.currBattleStat == bf.BattleStatus_Running
 }
 
 func (d *Table) reportGameStart() {
@@ -232,13 +232,6 @@ func (d *Table) reportGameStart() {
 
 func (d *Table) reportGameOver() {
 	d.OverAt = time.Now()
-}
-
-func (d *Table) GetPlayer(uid int64) *Player {
-	if p, has := d.players.Load(uid); has {
-		return p.(*Player)
-	}
-	return nil
 }
 
 func (d *Table) PublishEvent(eventmsg proto.Message) {
@@ -261,11 +254,59 @@ func (d *Table) PublishEvent(eventmsg proto.Message) {
 	d.EventPublisher.Publish(warp)
 }
 
-func (d *Table) OnPlayerMessage(uid int64, msgid int, iraw []byte) {
-	d.action <- func() {
-		p := d.GetPlayer(uid)
+func (d *Table) OnPlayerMessage(uid uint64, msgid uint32, iraw []byte) {
+	d.actQue <- func() {
+		p := d.ps.ByUID(uid)
 		if p != nil && d.battle != nil {
 			d.battle.OnPlayerMessage(p, msgid, iraw)
 		}
+	}
+}
+
+func (d *Table) updateStatus(s TableStatus) {
+	atomic.StoreInt32(&d.status, s)
+}
+
+func (d *Table) Status() TableStatus {
+	return atomic.LoadInt32(&d.status)
+}
+
+func (d *Table) OnPlayerReady(uid uint64, rds int32) {
+	d.actQue <- func() {
+
+		if d.Status() != TableStatus_Inited {
+			return
+		}
+
+		p := d.ps.ByUID(uid)
+		p.Ready = rds
+
+		if rds == 0 {
+			return
+		}
+
+		rdscnt := 0
+
+		players := []bf.Player{}
+
+		d.ps.Range(func(p *Player) bool {
+			players = append(players, p)
+			if p.Ready > 0 {
+				rdscnt++
+			}
+			return true
+		})
+
+		if rdscnt != len(players) {
+			return
+		}
+
+		err := d.battle.OnStart(players)
+
+		if err != nil {
+			log.Error(err)
+		}
+
+		d.updateStatus(TableStatus_Running)
 	}
 }

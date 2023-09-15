@@ -40,11 +40,6 @@ func TestTableTicker(t *testing.T) {
 		t.Fatal(err)
 	}
 	d.Init(logic, nil, nil)
-	err := d.Start()
-
-	if err != nil {
-		t.Fatal(err)
-	}
 
 	sec := time.Duration(rand.Int31n(10) + 10)
 	time.Sleep(time.Second * sec)

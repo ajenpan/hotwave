@@ -42,7 +42,7 @@ const PublicKeyFile = "public.pem"
 func ReadRSAKey() ([]byte, []byte, error) {
 	privateRaw, err := os.ReadFile(PrivateKeyFile)
 	if err != nil {
-		privateKey, publicKey, err := rsagen.GenerateRsaPem(2048)
+		privateKey, publicKey, err := rsagen.GenerateRsaPem(512)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -153,17 +153,17 @@ func RealMain(c *cli.Context) error {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-			_, _, err := common.VerifyToken(publicKey, authorstr)
+			_, err := common.VerifyToken(publicKey, authorstr)
 			if err != nil {
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
-			h.ServeHTTP(w, r)
+
+			h(w, r)
 		}
 	}
 
 	mux := http.NewServeMux()
-	mux.Handle("/auth", h)
 
 	NewMethod := func(f interface{}) *calltable.Method {
 		refv := reflect.ValueOf(f)

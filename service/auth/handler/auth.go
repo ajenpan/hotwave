@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -88,7 +89,11 @@ func (h *Auth) Login(ctx context.Context, in *msg.LoginRequest) (*msg.LoginRespo
 		return out, nil
 	}
 
-	assess, err := common.GenerateToken(h.PK, user.UID, user.Uname)
+	assess, err := common.GenerateToken(h.PK, &common.UserClaims{
+		UID:   uint64(user.UID),
+		UName: user.Uname,
+		Role:  "user",
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -201,6 +206,28 @@ func (h *Auth) ModifyPasswd(ctx context.Context, in *msg.ModifyPasswdRequest) (*
 	return nil, nil
 }
 
-func (h *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-
+func (h *Auth) AuthWrapper(f http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		authorstr := r.Header.Get("Authorization")
+		authorstr = strings.TrimPrefix(authorstr, "Bearer ")
+		if authorstr == "" {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		_, err := common.VerifyToken(&h.PK.PublicKey, authorstr)
+		if err != nil {
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		f(w, r)
+	}
 }
+
+// func (h *Auth) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+// 	path := strings.TrimPrefix(r.URL.Path, "/auth/")
+// 	if path == "" {
+// 		http.NotFound(w, r)
+// 		return
+// 	}
+// 	log.Info(path)
+// }

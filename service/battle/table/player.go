@@ -2,6 +2,7 @@ package table
 
 import (
 	"fmt"
+	"sync"
 
 	protobuf "google.golang.org/protobuf/proto"
 
@@ -37,9 +38,8 @@ func NewPlayers(infos []*pb.PlayerInfo) ([]*Player, error) {
 
 type Player struct {
 	*pb.PlayerInfo
-	tableid string
-
-	sender func(msgname string, raw []byte) error
+	Ready  int32
+	sender func(msgname uint32, raw []byte) error
 }
 
 func (p *Player) Score() int64 {
@@ -61,11 +61,49 @@ func (p *Player) Role() bf.RoleType {
 	return bf.RoleType_Player
 }
 
-func (p *Player) SendMessage(protobuf.Message) error {
+func (p *Player) Send(msgid uint32, raw []byte) error {
+	return p.sender(msgid, raw)
+}
 
+type PlayerStore struct {
+	byUID    sync.Map
+	bySeatID sync.Map
+}
+
+func (ps *PlayerStore) ByUID(uid uint64) *Player {
+	p, has := ps.byUID.Load(uid)
+	if !has {
+		return nil
+	}
+	return p.(*Player)
+}
+
+func (ps *PlayerStore) BySeat(seatid uint32) *Player {
+	p, has := ps.bySeatID.Load(seatid)
+	if !has {
+		return nil
+	}
+	return p.(*Player)
+}
+
+func (ps *PlayerStore) Store(p *Player) error {
+	uid := p.Uid
+	seatid := p.SeatId
+	ps.bySeatID.Store(seatid, p)
+	ps.byUID.Store(uid, p)
 	return nil
 }
 
-func (p *Player) Send(msgname string, raw []byte) error {
-	return p.sender(msgname, raw)
+func (ps *PlayerStore) Range(f func(p *Player) bool) {
+	ps.byUID.Range(func(key, value any) bool {
+		return f(value.(*Player))
+	})
+}
+func (ps *PlayerStore) ToSlice() []*Player {
+	ret := []*Player{}
+	ps.Range(func(p *Player) bool {
+		ret = append(ret, p)
+		return true
+	})
+	return ret
 }

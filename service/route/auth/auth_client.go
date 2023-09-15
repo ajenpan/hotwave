@@ -11,14 +11,11 @@ type AuthClient struct {
 }
 
 func (a *AuthClient) TokenAuth(token string) *UserInfo {
-	uid, uname, err := common.VerifyToken(a.PK, token)
+	uc, err := common.VerifyToken(a.PK, token)
 	if err != nil {
 		return nil
 	}
-	return &UserInfo{
-		Uid:   uid,
-		Uname: uname,
-	}
+	return uc
 }
 
 func (a *AuthClient) AccountAuth(account string, password string) *UserInfo {
