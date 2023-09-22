@@ -20,8 +20,8 @@ import (
 	"hotwave/utils/marshal"
 )
 
-type Handler struct {
-	battles sync.Map
+type Battle struct {
+	tables sync.Map
 
 	LogicCreator *battle.GameLogicCreator
 	ct           *calltable.CallTable[uint32]
@@ -31,15 +31,15 @@ type Handler struct {
 	createCounter int32
 }
 
-func New() *Handler {
-	h := &Handler{
+func New() *Battle {
+	h := &Battle{
 		LogicCreator: &battle.GameLogicCreator{},
 	}
-	h.ct = calltable.ExtractAsyncMethodByMsgID(proto.File_proto_battle_server_proto.Messages(), h)
+	h.ct = calltable.ExtractAsyncMethodByMsgID(proto.File_service_battle_proto_battle_proto.Messages(), h)
 	return h
 }
 
-func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest) (*proto.StartBattleResponse, error) {
+func (h *Battle) CreateBattle(ctx context.Context, in *proto.StartBattleRequest) (*proto.StartBattleResponse, error) {
 	logic, err := h.LogicCreator.CreateLogic(in.GameName)
 	if err != nil {
 		return nil, err
@@ -47,7 +47,7 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest
 
 	atomic.AddInt32(&h.createCounter, 1)
 
-	battleid := uuid.NewString() + fmt.Sprintf("-%d", h.createCounter)
+	battleid := uuid.NewString()
 
 	d := table.NewTable(table.TableOption{
 		ID:             battleid,
@@ -68,7 +68,7 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest
 		return nil, err
 	}
 
-	h.battles.Store(battleid, d)
+	h.tables.Store(battleid, d)
 
 	out := &proto.StartBattleResponse{
 		BattleId: d.ID,
@@ -76,48 +76,40 @@ func (h *Handler) CreateBattle(ctx context.Context, in *proto.StartBattleRequest
 	return out, nil
 }
 
-// func (h *Handler) StopBattle(ctx context.Context, in *proto.StopBattleRequest) (*proto.StopBattleResponse, error) {
-// 	out := &proto.StopBattleResponse{}
-// 	d := h.getBattleById(in.BattleId)
-// 	if d == nil {
-// 		return out, fmt.Errorf("battle not found")
-// 	}
-// 	d.Close()
-// 	h.battles.Delete(in.BattleId)
-// 	return out, nil
-// }
-
-type userInfoKey struct{}
-
-var UserInfoKey = &userInfoKey{}
-
-func GetUserInfo(ctx context.Context) *tcp.UserInfo {
-	return ctx.Value(UserInfoKey).(*tcp.UserInfo)
-}
-
-func WithUserInfo(ctx context.Context, uinfo *tcp.UserInfo) context.Context {
-	return context.WithValue(ctx, UserInfoKey, uinfo)
-}
-
-func (h *Handler) onBattleFinished(battleid string) {
+func (h *Battle) onBattleFinished(battleid string) {
 	d := h.getBattleById(battleid)
 	if d == nil {
 		return
 	}
+
+	d.Players.Range(func(p *table.Player) bool {
+		h.UIDUnBingBID(uint64(p.Uid), battleid)
+		return true
+	})
+
 	d.Close()
-	h.battles.Delete(battleid)
+	h.tables.Delete(battleid)
 }
 
-func (h *Handler) OnEvent(topc string, msg protobuf.Message) {
+func (h *Battle) OnEvent(topc string, msg protobuf.Message) {
 
 }
 
-func (h *Handler) bingBattle() error {
-
+func (h *Battle) UIDBingBID(uid uint64, bid string) error {
+	// TODO:
 	return nil
 }
 
-func (h *Handler) JoinBattle(ctx context.Context, in *proto.JoinBattleRequest) (*proto.JoinBattleResponse, error) {
+func (h *Battle) UIDUnBingBID(uid uint64, bid string) {
+
+}
+
+func (h *Battle) LoadBattleByUID(uid uint64) []*table.Table {
+	// TODO:
+	return nil
+}
+
+func (h *Battle) JoinBattle(ctx context.Context, in *proto.JoinBattleRequest) (*proto.JoinBattleResponse, error) {
 	out := &proto.JoinBattleResponse{
 		BattleId:   in.BattleId,
 		SeatId:     in.SeatId,
@@ -128,12 +120,20 @@ func (h *Handler) JoinBattle(ctx context.Context, in *proto.JoinBattleRequest) (
 	if d == nil {
 		return nil, fmt.Errorf("battle not found")
 	}
-	uinfo := GetUserInfo(ctx)
-	d.OnPlayerReady(uinfo.Uid, in.ReadyState)
+
+	socket := GetTcpSocket(ctx)
+
+	d.OnPlayerReady(socket.Uid, in.ReadyState)
+
+	// 是否需要保持 uid - battleid 映射?
+	// 1 uid -> n * battleid.
+	// 当uid掉线时, 需要遍历所有的battleid, 并且通知battleid.
+	h.UIDBingBID(socket.Uid, in.BattleId)
+
 	return out, nil
 }
 
-func (h *Handler) OnBattleMessageWrap(s *tcp.Socket, msg *proto.LoigcMessageWrap) {
+func (h *Battle) OnBattleMessageWrap(s *tcp.Socket, msg *proto.LoigcMessageWrap) {
 	b := h.getBattleById(msg.BattleId)
 	if b == nil {
 		return
@@ -141,34 +141,30 @@ func (h *Handler) OnBattleMessageWrap(s *tcp.Socket, msg *proto.LoigcMessageWrap
 	b.OnPlayerMessage(s.Uid, (msg.Msgid), msg.Data)
 }
 
-func (h *Handler) getBattleById(battleId string) *table.Table {
-	if raw, ok := h.battles.Load(battleId); ok {
+func (h *Battle) getBattleById(battleId string) *table.Table {
+	if raw, ok := h.tables.Load(battleId); ok {
 		return raw.(*table.Table)
 	}
 	return nil
 }
 
-func (h *Handler) OnConn(s *tcp.Socket, ss tcp.SocketStat) {
-	log.Info("OnConn:", int(ss))
-	if ss == tcp.Disconnected {
-		s.MetaLoad("uid")
+func (h *Battle) OnConn(s *tcp.Socket, online bool) {
+
+	log.Info("OnConn:", online)
+
+	tables := h.LoadBattleByUID(s.Uid)
+	for _, t := range tables {
+		t.OnPlayerConn(s.Uid, online)
 	}
 }
 
-func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
+func (h *Battle) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
 	ctype := ss.GetType()
-	if ctype <= tcp.PacketTypeInnerEndAt_ {
-		return
-	}
 
-	if ctype == 4 {
-		body := ss.GetBody()
-		if len(body) < 4 {
-			log.Errorf("invalid message, body len: %d", len(body))
-			return
-		}
+	if ctype == 6 {
+		head := ss.GetHead()
 
-		msgid := binary.LittleEndian.Uint32(body)
+		msgid := binary.LittleEndian.Uint32(head)
 		method := h.ct.Get(msgid)
 		if method == nil {
 			return
@@ -177,13 +173,15 @@ func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
 		req := method.GetRequest()
 		defer method.PutRequest(req)
 
-		err := h.marshal.Unmarshal(body[4:], req)
+		body := ss.GetBody()
+		err := h.marshal.Unmarshal(body, req)
 		if err != nil {
 			log.Errorf("marshal msgid:%d,error:%w", msgid, err)
 			return
 		}
 
-		res := method.Call(req)
+		ctx := WithTcpSocket(context.Background(), s)
+		res := method.Call(ctx, req)
 		if len(res) == 0 {
 			return
 		}
@@ -195,16 +193,5 @@ func (h *Handler) OnMessage(s *tcp.Socket, ss *tcp.THVPacket) {
 			log.Errorf("call msgid:%d,error:%w", msgid, err)
 			return
 		}
-
-		// ss.Reset()
-		// respi := res[0]
-		// respraw, err := h.marshal.Marshal(respi)
-		// if err != nil {
-		// 	return
-		// }
-		// respHead := make([]byte, 4)
-		// binary.LittleEndian.PutUint32(respHead, msgid+1)
-		// ss.Body = append(respHead, respraw...)
-		// s.SendPacket(ss)
 	}
 }

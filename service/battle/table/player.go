@@ -46,7 +46,7 @@ func (p *Player) Score() int64 {
 	return p.PlayerInfo.Score
 }
 
-func (p *Player) UserID() int64 {
+func (p *Player) UserID() uint64 {
 	return p.PlayerInfo.Uid
 }
 

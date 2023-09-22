@@ -42,6 +42,17 @@
                 "localhost",
                 "10010"
             ]
+        },
+        {
+            "name": "testclient",
+            "type": "go",
+            "request": "launch",
+            "mode": "auto",
+            "program": "${workspaceRoot}/apps/testclient",
+            "args": [
+                "localhost:12345",
+                "10010"
+            ]
         }
     ]
 }

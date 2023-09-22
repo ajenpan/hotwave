@@ -14,8 +14,8 @@ type ClientOptions struct {
 	RemoteAddress string
 	OnMessage     OnMessageFunc
 	OnConnStat    OnConnStatFunc
-
-	Timeout time.Duration
+	Token         string
+	Timeout       time.Duration
 }
 
 func NewClient(opts *ClientOptions) *Client {
@@ -57,28 +57,52 @@ func (c *Client) Connect() error {
 		Timeout: c.Opt.Timeout,
 	})
 
-	//send ack
 	p := NewEmptyTHVPacket()
-	p.SetType(PacketTypeAck)
-	err = socket.writePacket(p)
-	if err != nil {
-		socket.Close()
-		return err
+	funcs := []func() error{
+		func() error { //send ack
+			p.SetType(PacketTypeAck)
+			return socket.writePacket(p)
+		}, func() error {
+			p.Reset()
+			err = socket.readPacket(p)
+			if err != nil {
+				return err
+			}
+			if p.GetType() != PacketTypeAck {
+				return fmt.Errorf("read ack failed, typ: %d", p.GetType())
+			}
+			//set socket id
+			if len(p.Body) > 0 {
+				socket.id = string(p.Body)
+			}
+			return nil
+		}, func() error { // auth
+			p.Reset()
+			p.SetType(PacketTypeAuth)
+			p.SetBody([]byte(c.Opt.Token))
+			return socket.writePacket(p)
+		}, func() error {
+			p.Reset()
+			err = socket.readPacket(p)
+			if err != nil {
+				return err
+			}
+			if p.GetType() != PacketTypeAuth {
+				return fmt.Errorf("read auth failed, typ: %d", p.GetType())
+			}
+			body := string(p.GetBody())
+			if body != "ok" {
+				return fmt.Errorf("auth failed, body: %s", body)
+			}
+			return nil
+		},
 	}
 
-	//read ack
-	err = socket.readPacket(p)
-	if err != nil {
-		socket.Close()
-		return err
-	}
-	if p.GetType() != PacketTypeAck {
-		socket.Close()
-		return fmt.Errorf("read ack failed, typ: %d", p.GetType())
-	}
-	//set socket id
-	if len(p.Body) > 0 {
-		socket.id = string(p.Body)
+	for _, f := range funcs {
+		if err := f(); err != nil {
+			socket.Close()
+			return err
+		}
 	}
 
 	//here is connect finished
@@ -90,10 +114,10 @@ func (c *Client) Connect() error {
 		go socket.writeWork()
 
 		if c.Opt.OnConnStat != nil {
-			c.Opt.OnConnStat(c.Socket, Connected)
+			c.Opt.OnConnStat(c.Socket, true)
 
 			defer func() {
-				c.Opt.OnConnStat(c.Socket, Disconnected)
+				c.Opt.OnConnStat(c.Socket, false)
 			}()
 		}
 
@@ -113,7 +137,6 @@ func (c *Client) Connect() error {
 						socket.chSend <- heartbeatPakcet
 					}
 				case <-socket.chClosed:
-					fmt.Println("closed heartbeatPakcet")
 					return
 				}
 			}

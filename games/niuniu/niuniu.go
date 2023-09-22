@@ -77,6 +77,14 @@ type Niuniu struct {
 	CT *calltable.CallTable[int]
 }
 
+func (nn *Niuniu) BroadcastMessage(msg protobuf.Message) {
+
+}
+
+func (nn *Niuniu) Send2Player(p battle.Player, msg protobuf.Message) {
+
+}
+
 func (nn *Niuniu) OnPlayerJoin(players []battle.Player) error {
 	if len(players) == 0 {
 		return nil
@@ -110,7 +118,7 @@ func (nn *Niuniu) OnInit(d battle.Table, conf interface{}) error {
 	return nil
 }
 
-func (nn *Niuniu) OnStart() error {
+func (nn *Niuniu) OnStart([]battle.Player) error {
 	if len(nn.players) < 2 {
 		return fmt.Errorf("player is not enrough")
 	}
@@ -136,7 +144,7 @@ func (nn *Niuniu) GameDeskInfoRequest(p battle.Player, req *GameDeskInfoRequest)
 	resp := &GameDeskInfoResponse{
 		Info: nn.info,
 	}
-	nn.table.SendMessageToPlayer(p, resp)
+	nn.Send2Player(p, resp)
 }
 
 func (nn *Niuniu) checkStat(p *NNPlayer, expect GameStep) error {
@@ -158,7 +166,7 @@ func (nn *Niuniu) OnPlayerBankerRequest(nnPlayer *NNPlayer, req *PlayerBanker) {
 		Rob:    req.Rob,
 	}
 	nnPlayer.BankerRob = req.Rob
-	nn.table.BroadcastMessage(notice)
+	nn.BroadcastMessage(notice)
 }
 
 func (nn *Niuniu) OnPlayerBetRateRequest(p battle.Player, pMsg *PlayerBetRate) {
@@ -179,7 +187,7 @@ func (nn *Niuniu) OnPlayerBetRateRequest(p battle.Player, pMsg *PlayerBetRate) {
 		SeatId: int32(p.SeatID()),
 		Rate:   pMsg.Rate,
 	}
-	nn.table.BroadcastMessage(notice)
+	nn.BroadcastMessage(notice)
 }
 
 func (nn *Niuniu) OnPlayerOutCardRequest(p battle.Player, pMsg *PlayerOutCard) {
@@ -205,7 +213,7 @@ func (nn *Niuniu) OnPlayerOutCardRequest(p battle.Player, pMsg *PlayerOutCard) {
 		OutCard: nnPlayer.OutCard,
 	}
 
-	nn.table.BroadcastMessage(notice)
+	nn.BroadcastMessage(notice)
 }
 
 func (nn *Niuniu) addPlayer(p battle.Player) (*NNPlayer, error) {
@@ -326,7 +334,7 @@ func (nn *Niuniu) ChangeLogicStep(s GameStep) {
 		TimeDown:   int32(donwtime),
 	}
 
-	nn.table.BroadcastMessage(notice)
+	nn.BroadcastMessage(notice)
 
 	nn.Debug()
 }
@@ -404,7 +412,8 @@ func (nn *Niuniu) notifyRobBanker() {
 	notice := &BankerSeatNotify{
 		SeatId: bankSeatId,
 	}
-	nn.table.BroadcastMessage(notice)
+
+	nn.BroadcastMessage(notice)
 }
 
 func (nn *Niuniu) sendCardToPlayer() {
@@ -419,7 +428,7 @@ func (nn *Niuniu) sendCardToPlayer() {
 			SeatId:    p.SeatId,
 			HandCards: p.HandCards,
 		}
-		nn.table.SendMessageToPlayer(p.raw, notice)
+		nn.Send2Player(p.raw, notice)
 	}
 
 	for _, p := range nn.players {
@@ -477,7 +486,7 @@ func (nn *Niuniu) beginTally() {
 
 	// notify.TallInfo = append(notify.TallInfo, bankerTally)
 
-	nn.table.BroadcastMessage(notify)
+	nn.BroadcastMessage(notify)
 }
 
 func (nn *Niuniu) resetDesk() {

@@ -18,7 +18,7 @@ var DefaultTimeout = 30 * time.Second
 var DefaultMinTimeout = 1 * time.Second
 
 type OnMessageFunc func(*Socket, *THVPacket)
-type OnConnStatFunc func(*Socket, SocketStat)
+type OnConnStatFunc func(*Socket, bool)
 type NewIDFunc func() string
 
 type SocketOptions struct {

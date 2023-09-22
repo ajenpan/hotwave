@@ -56,7 +56,7 @@ func VerifyToken(pk *rsa.PublicKey, tokenRaw string) (*UserClaims, error) {
 			ret.Role = vstr
 		}
 	}
-	if v, has := claims["uname"]; has {
+	if v, has := claims["aud"]; has {
 		vstr, ok := v.(string)
 		if ok {
 			ret.UName = vstr

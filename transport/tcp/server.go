@@ -46,7 +46,7 @@ func NewServer(opts ServerOptions) (*Server, error) {
 		ret.opts.OnMessage = func(s *Socket, p *THVPacket) {}
 	}
 	if ret.opts.OnConn == nil {
-		ret.opts.OnConn = func(s *Socket, stat SocketStat) {}
+		ret.opts.OnConn = func(s *Socket, enable bool) {}
 	}
 	if ret.opts.HeatbeatInterval == 0 {
 		ret.opts.HeatbeatInterval = DefaultTimeout
@@ -107,12 +107,12 @@ func (s *Server) Start() error {
 				Timeout: s.opts.HeatbeatInterval,
 			})
 
-			go s.accept(socket)
+			go s.onAccept(socket)
 		}
 	}
 }
 
-func (n *Server) accept(socket *Socket) {
+func (n *Server) onAccept(socket *Socket) {
 	n.wgConns.Add(1)
 	defer n.wgConns.Done()
 	defer socket.Close()
@@ -163,8 +163,8 @@ func (n *Server) accept(socket *Socket) {
 	defer n.removeSocket(socket)
 
 	if n.opts.OnConn != nil {
-		n.opts.OnConn(socket, Connected)
-		defer n.opts.OnConn(socket, Disconnected)
+		n.opts.OnConn(socket, true)
+		defer n.opts.OnConn(socket, false)
 	}
 
 	var socketErr error = nil

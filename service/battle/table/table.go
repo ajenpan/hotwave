@@ -67,7 +67,7 @@ type Table struct {
 	quit   chan bool
 	status TableStatus
 
-	ps PlayerStore
+	Players PlayerStore
 }
 
 func (d *Table) Init(logic bf.Logic, players []*Player, logicConf interface{}) error {
@@ -79,7 +79,7 @@ func (d *Table) Init(logic bf.Logic, players []*Player, logicConf interface{}) e
 	}
 
 	for _, p := range players {
-		d.ps.Store(p)
+		d.Players.Store(p)
 	}
 
 	if err := logic.OnInit(d, logicConf); err != nil {
@@ -213,7 +213,7 @@ func (d *Table) BroadcastMessage(msgid uint32, msg proto.Message) {
 		return
 	}
 
-	d.ps.Range(func(p *Player) bool {
+	d.Players.Range(func(p *Player) bool {
 		err := p.Send(msgid, raw)
 		if err != nil {
 			log.Error(err)
@@ -256,7 +256,7 @@ func (d *Table) PublishEvent(eventmsg proto.Message) {
 
 func (d *Table) OnPlayerMessage(uid uint64, msgid uint32, iraw []byte) {
 	d.actQue <- func() {
-		p := d.ps.ByUID(uid)
+		p := d.Players.ByUID(uid)
 		if p != nil && d.battle != nil {
 			d.battle.OnPlayerMessage(p, msgid, iraw)
 		}
@@ -274,39 +274,42 @@ func (d *Table) Status() TableStatus {
 func (d *Table) OnPlayerReady(uid uint64, rds int32) {
 	d.actQue <- func() {
 
-		if d.Status() != TableStatus_Inited {
-			return
-		}
+		if d.Status() == TableStatus_Inited {
+			p := d.Players.ByUID(uid)
+			p.Ready = rds
 
-		p := d.ps.ByUID(uid)
-		p.Ready = rds
-
-		if rds == 0 {
-			return
-		}
-
-		rdscnt := 0
-
-		players := []bf.Player{}
-
-		d.ps.Range(func(p *Player) bool {
-			players = append(players, p)
-			if p.Ready > 0 {
-				rdscnt++
+			if rds == 0 {
+				return
 			}
-			return true
-		})
 
-		if rdscnt != len(players) {
-			return
+			rdscnt := 0
+
+			players := []bf.Player{}
+
+			d.Players.Range(func(p *Player) bool {
+				players = append(players, p)
+				if p.Ready > 0 {
+					rdscnt++
+				}
+				return true
+			})
+
+			if rdscnt != len(players) {
+				return
+			}
+
+			err := d.battle.OnStart(players)
+
+			if err != nil {
+				log.Error(err)
+			}
+
+			d.updateStatus(TableStatus_Running)
 		}
 
-		err := d.battle.OnStart(players)
-
-		if err != nil {
-			log.Error(err)
-		}
-
-		d.updateStatus(TableStatus_Running)
 	}
+}
+
+func (d *Table) OnPlayerConn(uid uint64, online bool) {
+
 }
