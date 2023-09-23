@@ -43,7 +43,7 @@ func (s *HttpSvr) HandleMethod(name string, method *calltable.Method) {
 	s.Mux.HandleFunc(name, s.WrapMethod(method))
 }
 
-func (s *HttpSvr) WrapMethod(method *calltable.Method) func(w http.ResponseWriter, r *http.Request) {
+func (s *HttpSvr) WrapMethod(method *calltable.Method) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		raw, err := io.ReadAll(r.Body)
 		if err != nil {

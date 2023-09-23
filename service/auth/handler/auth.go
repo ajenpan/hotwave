@@ -199,6 +199,7 @@ func (h *Auth) PublicKeys(ctx context.Context, in *msg.PublicKeysRequest) (*msg.
 }
 
 func (h *Auth) AnonymousLogin(ctx context.Context, in *msg.AnonymousLoginRequest) (*msg.LoginResponse, error) {
+
 	return nil, nil
 }
 
